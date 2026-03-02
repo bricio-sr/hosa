@@ -9,9 +9,12 @@ hosa/
 │   └── hosa/
 │       └── main.go           # The entry point. Where the magic happens; initializes the agent.
 ├── internal/                 # Private agent code (cannot be imported by external packages)
-│   ├── sysbpf/               # Custom eBPF loader via native syscalls.
-│   ├── linalg/               # Custom Linear Algebra library (Matrices, Inversion, Covariance).
-│   ├── syscgroup/            # Direct file manipulation within the Linux VFS.
+│   ├── sysbpf/               
+│   │   └── syscall.go        # Custom eBPF loader via native syscalls.
+│   ├── linalg/               
+│   │   └── matrix.go         # Custom Linear Algebra library (Matrices, Inversion, Covariance).
+│   ├── syscgroup/            
+│   │   └── file_edit.go      # Direct file manipulation within the Linux VFS.
 │   ├── bpf/                  
 │   │   ├── sensors.c         # Pure C eBPF code to be injected into the Kernel.
 │   │   └── bpf_bpfeb.go      # Auto-generated files by Cilium/ebpf for Go-to-C communication.

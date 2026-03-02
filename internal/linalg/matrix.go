@@ -93,3 +93,27 @@ func (m *Matrix) Inverse() (*Matrix, error) {
 
 	return inv, nil
 }
+
+// Sub subtrai a matriz B da matriz M (M - B).
+func (m *Matrix) Sub(b *Matrix) (*Matrix, error) {
+    if m.Rows != b.Rows || m.Cols != b.Cols {
+        return nil, errors.New("dimensões incompatíveis para subtração")
+    }
+    
+    result := NewMatrix(m.Rows, m.Cols)
+    for i := 0; i < len(m.Data); i++ {
+        result.Data[i] = m.Data[i] - b.Data[i]
+    }
+    return result, nil
+}
+
+// Transpose retorna a matriz transposta (troca linhas por colunas).
+func (m *Matrix) Transpose() *Matrix {
+    result := NewMatrix(m.Cols, m.Rows)
+    for i := 0; i < m.Rows; i++ {
+        for j := 0; j < m.Cols; j++ {
+            result.Set(j, i, m.Get(i, j))
+        }
+    }
+    return result
+}

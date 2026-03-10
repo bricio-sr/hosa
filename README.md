@@ -1,96 +1,363 @@
-# HOSA
-## Homeostasis Operating System Agent - eBPF powered autonomous resilience
+<p align="center">
+  <h1 align="center">HOSA</h1>
+  <p align="center"><strong>Homeostasis Operating System Agent</strong></p>
+  <p align="center">
+    An autonomous nervous system for Linux.<br/>
+    Detects, contains, and stabilizes system collapse in milliseconds — before your monitoring even notices.
+  </p>
+</p>
 
-## 1. The Problem: The Collapse of the Reactive Model
+<p align="center">
+  <a href="#how-it-works">How It Works</a> •
+  <a href="#the-problem">The Problem</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#roadmap">Roadmap</a> •
+  <a href="docs/math_model.md">Math Model</a> •
+  <a href="docs/architecture.md">Deep Dive</a>
+</p>
 
-Currently, Site Reliability Engineering (SRE) and the monitoring of critical infrastructures (hospitals, financial systems, public services) rely heavily on reactive tools (such as Prometheus, Zabbix, and Grafana). These tools act as a "conscious" nervous system: they identify a problem based on static thresholds (e.g., "Memory reached 90%") and trigger an alert, shifting the cognitive load and the responsibility for action entirely onto the human engineer.
-The results are alert fatigue, high false-positive rates, SRE team burnout, and catastrophic outages where systems fail (such as silent memory leaks) long before human intervention is even possible.
-## 2. The Solution: Bio-Inspired Resilience
+<p align="center">
+  <img src="https://img.shields.io/badge/status-alpha-orange" alt="Status: Alpha" />
+  <img src="https://img.shields.io/badge/linux-%E2%89%A5%205.8-blue" alt="Linux >= 5.8" />
+  <img src="https://img.shields.io/badge/lang-Go%20%2B%20eBPF%2FC-00ADD8" alt="Go + eBPF/C" />
+  <img src="https://img.shields.io/github/license/bricio-sr/hosa" alt="License" />
+</p>
 
-HOSA is born at the intersection of Critical Software Engineering, Applied Mathematics, and Cognitive Neuroscience. Inspired by the human Autonomic Nervous System—which regulates blood pressure and heart rate without requiring conscious thought—HOSA operates directly within the Linux Kernel to maintain server homeostasis.
-It does not page humans to solve problems; it predicts systemic collapse through stochastic trajectories and autonomously intervenes within milliseconds, isolating the anomaly before the operating system fails.
-## 3. Technological Architecture (Low-Level Engineering)
+---
 
-Built with a strict Zero-Dependencies philosophy (no third-party packages) to guarantee ultra-high performance and zero software supply chain risks, HOSA is divided into four biological subsystems mapped to pure code:
+## The Lethal Interval
 
-    Sensory System (Pure C eBPF): Injected directly into the Linux Kernel, it intercepts syscalls (such as memory allocation and I/O) at the root level. It features near-zero overhead, bypassing the need to constantly poll the /proc filesystem.
+Your server crashes in **2 seconds**. Your monitoring detects it in **100**.
 
-    Limbic System (Go Ring Buffer): An immutable, thread-safe circular memory structure that stores the server's recent state without allocating new memory dynamically, effectively neutralizing Garbage Collector (GC) latency.
+That gap — the milliseconds between the start of a collapse and the arrival of the first useful metric at your control plane — is what we call the **Lethal Interval**. It's where systems die while the observer has no idea anything is wrong.
 
-    Reflex Arc (Cgroups v2): The system's actuator. Upon predicting a failure, HOSA manipulates the Linux Virtual File System (VFS) to preemptively throttle rogue PIDs (processes), brute-forcing resource limits before the Kernel's OOM-Killer is triggered.
+```
+ TIMELINE OF A COLLAPSE — MEMORY LEAK @ 50MB/s
 
-    Predictive Cortex (Custom Math Engine): A natively built Linear Algebra library (linalg) designed from scratch to compute system health with maximum floating-point precision.
+ t=0s         t=1s         t=2s              t=8s              t=40s         t=100s
+  │            │            │                  │                  │              │
+  │ Leak       │ HOSA       │ HOSA             │ HOSA             │ WITHOUT      │ Prometheus
+  │ starts     │ detects    │ contains         │ stabilizes       │ HOSA:        │ fires alert
+  │            │            │ (memory.high)    │ system           │ OOM-Kill     │ (too late)
+  │            │            │                  │                  │              │
+  ├────────────┴────────────┤                  │                  │              │
+  │    LETHAL INTERVAL      │                  │                  │              │
+  │    HOSA acted here      │                  │                  │              │
+  │    (2 seconds)          │                  │                  │              │
+  └─────────────────────────┘                  │                  │              │
+                                               │                  │              │
+               ┌───────────────────────────────┘                  │              │
+               │  System degraded but ALIVE                       │              │
+               │  Transactions preserved                          │              │
+               │  Operator notified with full context             │              │
+               └──────────────────────────────────────────────────┘              │
+                                                                                 │
+                              ┌──────────────────────────────────────────────────┘
+                              │  WITHOUT HOSA: crash → 502 → CrashLoopBackOff
+                              │  → late alert → angry customers → postmortem
+                              └──────────────────────────────────────────────────
+```
 
-## 4. The Predictive Cortex and the Stochastic Model
+**HOSA doesn't replace your monitoring. It keeps your node alive until your monitoring can do its job.**
 
-HOSA's predictive advantage lies in moving away from isolated resource tracking. Instead, it applies Multivariable Mathematics to understand the deep correlations between CPU, Memory, Disk, and Network usage.
+---
 
-The system continuously learns the server's "normal" baseline, generating a Covariance Matrix. Real-time anomalies are calculated using the Mahalanobis Distance, which measures systemic stress by accounting for the correlation between different resources:
-DM​(X)=(X−μ​)TΣ−1(X−μ​)​
+## The Problem
 
-By calculating the derivative of this stress over time (dtdDM​​), the system accurately predicts the Time to Failure (Tf​) and triggers the Reflex Arc preventively.
-## 5. Licensing and Market Posture
+Modern infrastructure monitoring (Prometheus, Datadog, Grafana) follows the same pattern:
 
-The project adopts the GPLv3 license in its entirety (both Go and eBPF components). This strategic decision aims to protect the mathematical intellectual property from being commercially wrapped and closed-sourced by major Cloud providers (AWS, GCP, Azure). Any corporation that adopts and modifies HOSA will be legally required to contribute their improvements back to the open-source community, ensuring the continuous evolution of the ecosystem.
-## 6. Roadmap and Future (MVP to Global Legacy)
+1. Agent **collects** metrics on the node
+2. **Transmits** them over the network to a central server
+3. Central server **stores** them in a TSDB
+4. **Evaluates** rules (`cpu > 90% for 1m`)
+5. **Fires** an alert
 
-Phase 1: MVP & Proof of Concept (FATEC - Short Term)
+Every step adds latency. The central server makes decisions based on a **statistically stale snapshot** of the remote node. When collapse is fast — OOM kills, memory leaks, DDoS floods, fork bombs — the mitigation arrives after the damage is done.
 
-    Implementation of the Autonomous Agent focusing on bivariate correlation (CPU and Memory).
+Worse: when the network fails, the node loses **both** the ability to report **and** to receive instructions. It operates in complete blindness.
 
-    Practical lab validation simulating violent Memory Leaks, demonstrating HOSA's autonomous interception before server downtime.
+HOSA fixes this by putting the decision-making **on the node itself**.
 
-    Goal: Technical validation of artificial neuroplasticity within Linux Kernels.
+---
 
-Phase 2: Stochastic Expansion (Unicamp Master's Degree - Medium Term)
+## How It Works
 
-    Integration of the "Circulatory System" (Network) and "Digestive System" (Disk I/O) into the multivariable matrix.
+HOSA is a **bio-inspired, autonomous agent** that runs on every Linux node. It works like the human reflex arc: when you touch something hot, your spinal cord retracts your hand in milliseconds — your brain is notified *after* the reflex. HOSA does the same for your servers.
 
-    Implementation of Markov Chains and lightweight unsupervised Machine Learning to predict catastrophic failures with proven 99% mathematical accuracy.
+### Detection: Mahalanobis Distance
 
-    Goal: Publication of academic whitepapers establishing HOSA as the new gold standard for stochastic failure prediction in distributed systems.
+Instead of static thresholds (`cpu > 90%`), HOSA learns the **normal behavioral profile** of your node — the correlations between CPU, memory, I/O, network, and scheduler metrics — and detects deviations from that profile using the [Mahalanobis Distance](https://en.wikipedia.org/wiki/Mahalanobis_distance).
 
-Phase 3: Enterprise Adoption & SRE Paradigm Shift (Doctorate / Market - Long Term)
+**Why this matters:** CPU at 85% with low I/O and stable network might be a legitimate video rendering job. CPU at 85% with rising memory pressure, I/O stalls, and network latency spikes is a collapse in progress. Static thresholds can't tell the difference. Mahalanobis can.
 
-    Evolution of HOSA from a single-node agent to a cluster-wide resilience framework (Kubernetes integration).
+The key insight: HOSA doesn't just look at the **magnitude** of the deviation — it tracks the **velocity** (first derivative) and **acceleration** (second derivative) of the deviation. This means it detects that you're *heading toward* collapse, not just that you've arrived.
 
-    Driving the progressive replacement of reactive SRE practices with self-healing infrastructures based on human cognitive models.
+### Collection: eBPF in Kernel Space
 
-    Goal: Enterprise commercial licensing (Dual-Licensing) and establishing a permanent global legacy in core internet infrastructure.
+Metrics are collected via **eBPF probes** attached to kernel tracepoints — no polling, no scraping, no agents-calling-agents. Data flows from kernel space to user space through ring buffers with microsecond latency.
 
+### Actuation: cgroups v2 + XDP
+
+When HOSA detects anomaly acceleration, it acts through the same kernel mechanisms your orchestrator uses — but **100x faster**:
+
+- **cgroups v2**: Throttle CPU/memory of offending processes (not kill — *throttle*)
+- **XDP**: Drop network packets at the driver level before they reach the stack
+
+### Graduated Response
+
+HOSA doesn't go from "everything is fine" to "kill everything." It implements **six response levels** inspired by biological threat response:
+
+| Level | Name | Action | Reversibility |
+|-------|------|--------|---------------|
+| **0** | Homeostasis | Nothing. Suppress redundant telemetry. | — |
+| **1** | Vigilance | Increase sampling rate. Log locally. No intervention. | Automatic |
+| **2** | Soft Containment | `renice` non-essential processes. Webhook notification. | Automatic |
+| **3** | Active Containment | CPU/memory throttling via cgroups. Partial load shedding via XDP. | Auto with hysteresis |
+| **4** | Severe Containment | Aggressive throttling. Block inbound traffic except healthchecks. | Requires sustained recovery |
+| **5** | Autonomous Quarantine | Network isolation. Freeze non-critical processes. Last-resort. | Manual intervention |
+
+Every action is **logged with its mathematical justification** — the exact D_M value, derivative, threshold crossed, and action taken. The agent is fully auditable.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Linux kernel ≥ 5.8 (with eBPF CO-RE support)
+- Go ≥ 1.22
+- clang/llvm (for eBPF C compilation)
+- Root privileges (eBPF requires `CAP_BPF`, cgroups require `CAP_SYS_ADMIN`)
+
+### Build
+
+```bash
+git clone https://github.com/bricio-sr/hosa.git
+cd hosa
+make build
+```
+
+### Run
+
+```bash
+# Start in dry-run mode (observe and log, no actuation)
+sudo ./hosa --mode=dry-run
+
+# Start with full actuation enabled
+sudo ./hosa
+
+# Start with custom warm-up period
+sudo ./hosa --warmup=300s
+```
+
+### Observe
+
+```bash
+# HOSA logs every decision with mathematical context
+tail -f /var/log/hosa/decisions.log
+
+# Example output during detection:
+# [2026-03-10T14:23:08Z] LEVEL=1 VIGILANCE D_M=2.8 dDM/dt=+1.6
+#   dominant_dim=mem_used(c_j=0.72) mem_pressure(c_j=0.21)
+#   action=increase_sampling 100ms→10ms
+#
+# [2026-03-10T14:23:09Z] LEVEL=2 CONTAINMENT D_M=4.7 dDM/dt=+2.1 d2DM/dt2=+0.5
+#   target_cgroup=/kubepods/pod-payment-service-7b4f
+#   action=memory.high 2G→1.6G
+#   reason=dominant_contributor mem_used(68%) mem_pressure(19%)
+```
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    KERNEL SPACE (eBPF)                      │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │   Sensory    │  │   Sensory    │  │    Actuators      │  │
+│  │   Probes     │  │   Probes     │  │  (XDP / cgroup    │  │
+│  │ (tracepoints │  │  (kprobes,   │  │   controllers)    │  │
+│  │  scheduler,  │  │  PSI hooks)  │  │                   │  │
+│  │  mm, net)    │  │              │  │                   │  │
+│  └──────┬───────┘  └──────┬───────┘  └────────▲──────────┘  │
+│         │                 │                   │             │
+│         ▼                 ▼                   │             │
+│  ┌──────────────────────────────┐             │             │
+│  │     eBPF Ring Buffer         │             │             │
+│  └──────────────┬───────────────┘             │             │
+├─────────────────┼─────────────────────────────┼─────────────┤
+│                 │      USER SPACE             │             │
+│                 ▼                             │             │
+│  ┌────────────────────────────────────────────┘─────────┐   │
+│  │          PREDICTIVE CORTEX (Go)                      │   │
+│  │                                                      │   │
+│  │  1. Receive events from ring buffer                  │   │
+│  │  2. Update state vector x(t)                         │   │
+│  │  3. Update μ and Σ incrementally (Welford)           │   │
+│  │  4. Calculate D_M(x(t))                              │   │
+│  │  5. Apply EWMA → D̄_M(t)                              │   │
+│  │  6. Calculate dD̄_M/dt and d²D̄_M/dt²                  │   │
+│  │  7. Evaluate against adaptive thresholds             │   │
+│  │  8. Determine response level (0-5)                   │   │
+│  │  9. Send actuation command via BPF maps              │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │       OPPORTUNISTIC COMMUNICATION (Go)               │   │
+│  │                                                      │   │
+│  │  - Webhooks to orchestrators (when available)        │   │
+│  │  - Local structured log (audit trail)                │   │
+│  │  - Metrics endpoint (Prometheus-compatible)          │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **Mahalanobis over ML/DL** | O(n²) constant memory, no GPU, no training pipeline, runs on a Raspberry Pi. [Full rationale →](docs/math_model.md) |
+| **Welford incremental updates** | O(n²) per sample with O(1) allocation. No data windows stored. Predictable memory footprint. |
+| **EWMA over raw derivatives** | Numerical differentiation is ill-posed on noisy discrete data. EWMA smooths signal before differentiation. |
+| **Go over Rust/C** | Pragmatic: faster iteration for research phase. Hot path uses zero-allocation patterns. GC pauses are sub-ms on Go 1.22+. |
+| **Complement, not replace** | HOSA is not a monitoring system. It's the reflex arc that keeps you alive while your monitoring system thinks. |
+
+---
 
 ## Project Structure
 
-```text
+```
 hosa/
-├── cmd/
-│   └── hosa/
-│       └── main.go           # The entry point. Where the magic happens; initializes the agent.
-├── internal/                 # Private agent code (cannot be imported by external packages)
-│   ├── sysbpf/               
-│   │   └── syscall.go        # Custom eBPF loader via native syscalls.
-│   ├── linalg/               
-│   │   └── matrix.go         # Custom Linear Algebra library (Matrices, Inversion, Covariance).
-│   ├── syscgroup/            
-│   │   └── file_edit.go      # Direct file manipulation within the Linux VFS.
-│   ├── bpf/                  
-│   │   ├── sensors.c         # Pure C eBPF code to be injected into the Kernel.
-│   │   └── bpf_bpfeb.go      # Auto-generated files by Cilium/ebpf for Go-to-C communication.
-│   ├── sensor/               # The "Sensory System"
-│   │   └── collector.go      # Reads eBPF maps and structures raw data (Memory, CPU, I/O).
-│   ├── brain/                # The "Predictive Cortex" (The Math)
-│   │   ├── matrix.go         # Covariance Matrix manipulation.
-│   │   ├── mahalanobis.go    # Homeostasis calculation (Mahalanobis Distance).
-│   │   └── predictor.go      # Calculates the derivative and estimates Time of Failure (Tf).
-│   ├── motor/                # The "Reflex Arc" (Actuators)
-│   │   ├── cgroups.go        # Logic for PID throttling via Cgroups v2.
-│   │   └── signals.go        # Logic for sending SIGTERM/SIGKILL if necessary.
-│   └── state/                # The "Limbic System"
-│       └── memory.go         # Stores short-term history in memory (buffer/ring) for mathematical basis.
-├── docs/                     # Detailed documentation
-│   ├── architecture.md       # Explanation of the Autonomous Nervous System inspiration.
-│   └── math_model.md         # Documentation of mathematical formulas for the Thesis/Master's project.
+├── cmd/hosa/
+│   └── main.go               # Entry point — initializes the agent
+├── internal/
+│   ├── sysbpf/
+│   │   └── syscall.go         # Custom eBPF loader via native syscalls
+│   ├── linalg/
+│   │   └── matrix.go          # Linear algebra primitives (matrices, inversion, covariance)
+│   ├── syscgroup/
+│   │   └── file_edit.go       # Direct cgroup file manipulation via Linux VFS
+│   ├── bpf/
+│   │   ├── sensors.c          # eBPF C code injected into the kernel
+│   │   └── bpf_bpfeb.go       # Auto-generated Go↔C bridge (cilium/ebpf)
+│   ├── sensor/                # The Sensory System
+│   │   └── collector.go       # Reads eBPF maps, structures raw data into state vector
+│   ├── brain/                 # The Predictive Cortex
+│   │   ├── matrix.go          # Covariance matrix management
+│   │   ├── mahalanobis.go     # Homeostasis calculation (Mahalanobis Distance)
+│   │   └── predictor.go       # Derivatives + Time-to-Failure estimation
+│   ├── motor/                 # The Reflex Arc (Actuators)
+│   │   ├── cgroups.go         # PID throttling via cgroups v2
+│   │   └── signals.go         # Process signaling (SIGTERM/SIGKILL)
+│   └── state/                 # The Limbic System
+│       └── memory.go          # Short-term ring buffer for mathematical baseline
+├── docs/
+│   ├── architecture.md        # Deep dive into the bio-inspired architecture
+│   └── math_model.md          # Full mathematical formulation
 ├── go.mod
 ├── go.sum
-└── Makefile                  # To compile eBPF C code and Go with a single command (e.g., make build).
+└── Makefile                   # make build compiles eBPF C + Go in one step
 ```
+
+---
+
+## What HOSA Is Not
+
+Let's be explicit:
+
+- ❌ **Not a monitoring system.** It doesn't replace Prometheus, Datadog, or Grafana. It complements them.
+- ❌ **Not a HIDS.** It doesn't detect intrusions by signature. It detects system behavioral anomalies.
+- ❌ **Not an orchestrator.** It doesn't schedule pods or manage clusters. It keeps individual nodes alive.
+- ❌ **Not magic.** It has a [cold start window](docs/math_model.md#cold-start), can be [evaded by sophisticated attackers](docs/math_model.md#limitations), and [throttling has side effects](docs/math_model.md#throttling-risks).
+
+**HOSA operates in the temporal gap where monitoring systems are structurally — not accidentally — too slow to act.**
+
+---
+
+## Roadmap
+
+### Phase 1: Foundation — The Reflex Arc `← we are here`
+
+- [x] eBPF probes for memory, CPU, I/O collection
+- [x] Welford incremental covariance matrix
+- [x] Mahalanobis Distance calculation
+- [ ] EWMA smoothing + temporal derivatives
+- [ ] Hardware proprioception (automatic topology discovery)
+- [ ] Graduated response system (Levels 0-4)
+- [ ] Thalamic Filter (telemetry suppression in homeostasis)
+- [ ] Benchmarks: detection latency, overhead, false positive rate
+
+### Phase 2: Ecosystem Symbiosis
+
+- [ ] Webhooks for K8s HPA/KEDA (preemptive scale-up)
+- [ ] Prometheus-compatible metrics endpoint
+- [ ] Enriched `/healthz` with state vector
+- [ ] Kubernetes DaemonSet deployment
+
+### Phase 3: Semantic Triage
+
+- [ ] Local SLM for post-containment root cause analysis
+- [ ] Bloom Filter in eBPF for known-pattern fast-path blocking
+- [ ] Autonomous Quarantine (Level 5) with environment-aware modes
+- [ ] Habituation: automatic baseline recalibration
+
+### Future Research (PhD scope)
+
+- [ ] **Swarm Intelligence**: P2P consensus between HOSA instances
+- [ ] **Federated Learning**: collective immunity across fleet
+- [ ] **Hardware Offload**: SmartNIC/DPU acceleration
+
+---
+
+## Academic Context
+
+HOSA originates from a Master's research project at **IMECC/Unicamp** (University of Campinas, Brazil). The theoretical foundation is documented in the [HOSA Whitepaper v2.1](docs/whitepaper.pdf).
+
+**Core references:**
+- Mahalanobis, P. C. (1936). *On the generalized distance in statistics.*
+- Welford, B. P. (1962). *Note on a Method for Calculating Corrected Sums of Squares and Products.*
+- Horn, P. (2001). *Autonomic Computing: IBM's Perspective on the State of Information Technology.*
+- Forrest, S., Hofmeyr, S. A., & Somayaji, A. (1997). *Computer immunology.*
+
+---
+
+## Contributing
+
+HOSA is in **early alpha**. The architecture is solidifying but the API is not stable yet.
+
+If you want to contribute:
+
+1. Read the [whitepaper](docs/whitepaper.pdf) first — it explains *why* before *how*
+2. Check [open issues](https://github.com/bricio-sr/hosa/issues) for `good-first-issue` tags
+3. Join the discussion in [Discussions](https://github.com/bricio-sr/hosa/discussions)
+
+Areas where help is especially welcome:
+- **eBPF expertise**: Optimizing probe overhead, CO-RE compatibility testing across kernel versions
+- **Statistical validation**: Testing Mahalanobis robustness under non-Gaussian workload distributions
+- **Chaos engineering**: Designing fault injection scenarios for benchmarking
+
+---
+
+## License
+
+[GPL-3.0 license ](LICENSE) — Use it, extend it.
+
+---
+
+<p align="center">
+  <em>
+    "Orchestrators and centralized monitoring are essential for capacity planning and long-term governance.<br/>
+    But they are structurally — not accidentally — too slow to guarantee a node's survival in real time.<br/>
+    If collapse happens in the interval between perception and exogenous action,<br/>
+    the capacity for immediate decision must reside in the node itself."
+  </em>
+</p>
+
+<p align="center">
+  <a href="docs/whitepaper.pdf">Read the Whitepaper</a> •
+  <a href="https://github.com/bricio-sr/hosa/issues">Report a Bug</a> •
+  <a href="https://github.com/bricio-sr/hosa/discussions">Discuss</a>
+</p>

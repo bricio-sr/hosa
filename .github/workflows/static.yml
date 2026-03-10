@@ -4,8 +4,8 @@ on:
   push:
     branches: ["main"]
     paths:
-      - 'docs-site/**'           # Só roda quando o site muda — não rebuilda a cada commit de Go
-  workflow_dispatch:          # Permite rodar manualmente pelo GitHub
+      - 'docs-site/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -32,7 +32,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'docs-site'       # ← Só a pasta do site, não o repo inteiro
+          path: 'docs-site'
 
       - name: Deploy to GitHub Pages
         id: deployment

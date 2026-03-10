@@ -951,3 +951,565 @@ code {
     align-items: flex-start;
   }
 }
+
+/* ============================================================
+   TIMELINE — Lethal Interval Visualization
+   ============================================================ */
+.timeline {
+  margin-top: 64px;
+}
+
+.timeline-title {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.timeline-track {
+  position: relative;
+  padding-left: 60px;
+  margin-left: 20px;
+}
+
+.timeline-track::before {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+
+/* Event */
+.tl-event {
+  position: relative;
+  padding-bottom: 32px;
+}
+
+.tl-event:last-child {
+  padding-bottom: 0;
+}
+
+/* Marker dot on the line */
+.tl-marker {
+  position: absolute;
+  left: -49px;
+  top: 6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-root);
+  z-index: 2;
+}
+
+.tl-marker.hosa {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow-strong);
+}
+
+.tl-marker.dead {
+  background: var(--level-5);
+  border-color: var(--level-5);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+.tl-marker.prom {
+  background: var(--level-3);
+  border-color: var(--level-3);
+  box-shadow: 0 0 10px rgba(251, 146, 60, 0.3);
+}
+
+.tl-marker.neutral {
+  background: var(--text-tertiary);
+  border-color: var(--text-tertiary);
+}
+
+/* Time badge */
+.tl-time {
+  position: absolute;
+  left: -90px;
+  top: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-align: right;
+  width: 36px;
+}
+
+/* Card */
+.tl-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  transition: all var(--transition-base);
+}
+
+.tl-card:hover {
+  background: var(--bg-card-hover);
+  transform: translateX(4px);
+}
+
+.tl-card.tl-hosa {
+  border-left-color: var(--accent);
+}
+
+.tl-card.tl-dead {
+  border-left-color: var(--level-5);
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.tl-card.tl-prom {
+  border-left-color: var(--level-3);
+  background: rgba(251, 146, 60, 0.04);
+}
+
+.tl-card.tl-neutral {
+  border-left-color: var(--text-tertiary);
+}
+
+.tl-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.tl-card-head h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.tl-card p {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.tl-card p:last-child {
+  margin-bottom: 0;
+}
+
+/* Metric pills */
+.tl-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.tl-pill {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 100px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.tl-pill.accent-pill {
+  background: var(--accent-glow);
+  border-color: rgba(0, 229, 160, 0.15);
+  color: var(--accent);
+}
+
+/* Badges */
+.tl-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.hosa-badge {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.dead-badge {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--level-5);
+}
+
+.prom-badge {
+  background: rgba(251, 146, 60, 0.12);
+  color: var(--level-3);
+}
+
+/* Aside text */
+.tl-aside {
+  font-size: 0.78rem !important;
+  color: var(--text-tertiary) !important;
+  font-style: italic;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 8px !important;
+}
+
+/* Lethal Interval Callout */
+.tl-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 32px 0 32px 20px;
+  padding: 20px 24px;
+  background: var(--accent-glow);
+  border: 1px solid rgba(0, 229, 160, 0.2);
+  border-radius: 10px;
+}
+
+.tl-callout-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.tl-callout-body strong {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.tl-callout-body p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Counterfactual divider */
+.tl-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 32px 0 32px 20px;
+}
+
+.tl-divider::before,
+.tl-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.tl-divider span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--level-4);
+  white-space: nowrap;
+}
+
+
+/* ============================================================
+   ARCHITECTURE FLOW — Card-based diagram
+   ============================================================ */
+.arch-flow {
+  margin-top: 48px;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Layer */
+.arch-layer {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.arch-layer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.arch-kernel {
+  background: var(--bg-card);
+}
+
+.arch-kernel .arch-layer-head {
+  background: rgba(0, 229, 160, 0.06);
+}
+
+.arch-user {
+  background: var(--bg-card);
+}
+
+.arch-user .arch-layer-head {
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.arch-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 4px 12px;
+  border-radius: 4px;
+}
+
+.kernel-tag {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.user-tag {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+}
+
+.arch-tech {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+/* Nodes inside layers */
+.arch-nodes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+}
+
+.arch-nodes-stack {
+  grid-template-columns: 1fr;
+}
+
+.arch-node {
+  padding: 24px;
+  background: var(--bg-card);
+}
+
+.arch-node-icon {
+  font-size: 1.3rem;
+  margin-bottom: 8px;
+}
+
+.arch-node h4 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.arch-node ul,
+.arch-node ol {
+  padding-left: 0;
+  list-style: none;
+}
+
+.arch-node ul li,
+.arch-node ol li {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  padding: 3px 0;
+  line-height: 1.5;
+}
+
+/* Cortex node */
+.arch-node-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.arch-node-head .arch-node-icon {
+  margin-bottom: 0;
+}
+
+.cortex-steps {
+  counter-reset: step;
+  padding-left: 0 !important;
+}
+
+.cortex-steps li {
+  counter-increment: step;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0 !important;
+  border-bottom: 1px solid var(--border);
+}
+
+.cortex-steps li:last-child {
+  border-bottom: none;
+}
+
+.cortex-steps li::before {
+  content: counter(step);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Communication node */
+.arch-comms-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.arch-comms-chip {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 100px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.arch-comms-note {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  font-style: italic;
+  margin: 0;
+}
+
+/* Bridge between layers */
+.arch-bridge {
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+  padding: 16px 0;
+}
+
+.arch-bridge-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.arch-arrow-down,
+.arch-arrow-up {
+  flex-shrink: 0;
+}
+
+/* Step note */
+.step-note {
+  margin-top: 12px;
+  font-size: 0.82rem;
+  color: var(--text-tertiary);
+  line-height: 1.6;
+}
+
+.step-note code {
+  font-size: 0.78em;
+}
+
+.step-note a {
+  color: var(--accent);
+}
+
+
+/* ============================================================
+   RESPONSIVE — Timeline & Architecture additions
+   ============================================================ */
+@media (max-width: 860px) {
+  .timeline-track {
+    padding-left: 48px;
+    margin-left: 12px;
+  }
+
+  .tl-time {
+    left: -72px;
+    font-size: 0.68rem;
+    width: 30px;
+  }
+
+  .tl-marker {
+    left: -41px;
+    width: 10px;
+    height: 10px;
+  }
+
+  .tl-card {
+    padding: 16px 18px;
+  }
+
+  .arch-nodes {
+    grid-template-columns: 1fr;
+  }
+
+  .arch-bridge {
+    gap: 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .timeline-track {
+    padding-left: 40px;
+    margin-left: 8px;
+  }
+
+  .tl-time {
+    left: -60px;
+    font-size: 0.65rem;
+    width: 26px;
+  }
+
+  .tl-marker {
+    left: -33px;
+  }
+
+  .tl-callout {
+    margin-left: 8px;
+    padding: 16px;
+  }
+
+  .tl-divider {
+    margin-left: 8px;
+  }
+
+  .tl-metrics {
+    gap: 4px;
+  }
+
+  .tl-pill {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+  }
+}

@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HOSA — Homeostasis Operating System Agent</title>
+  <meta name="description" content="Um sistema nervoso autônomo para Linux. Detecta, contém e estabiliza colapsos em milissegundos — antes que seu monitoramento perceba." />
+  <meta name="keywords" content="HOSA, eBPF, Linux, SRE, detecção de anomalias, Mahalanobis, autônomo, resiliência, edge computing" />
+  <meta property="og:title" content="HOSA — Homeostasis Operating System Agent" />
+  <meta property="og:description" content="Um sistema nervoso autônomo para Linux. Detecta e contém colapsos em milissegundos." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://bricio-sr.github.io/hosa/pt_br/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+
+  <!-- ======================== NAVEGAÇÃO ======================== -->
+  <nav class="nav" role="navigation" aria-label="Navegação principal">
+    <div class="container">
+      <a href="/" class="nav-brand">
+        <span class="brand-dot"></span>
+        HOSA
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li class="active"><a href="/pt_br/">Início</a></li>
+        <li><a href="#como-funciona">Como Funciona</a></li>
+        <li><a href="#arquitetura">Arquitetura</a></li>
+        <li><a href="#inicio-rapido">Início Rápido</a></li>
+        <li><a href="#docs">Docs</a></li>
+      </ul>
+      <div class="nav-right">
+        <div class="lang-switch">
+          <a href="/">EN</a>
+          <a href="/pt_br/" class="active">PT</a>
+        </div>
+        <a href="https://github.com/bricio-sr/hosa" class="nav-github" aria-label="GitHub" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+        <button class="nav-toggle" id="navToggle" aria-label="Alternar menu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ======================== HERO ======================== -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        Alpha — Em desenvolvimento ativo
+      </div>
+      <h1>
+        Um<br />
+        <span class="accent-word">sistema nervoso</span><br />
+        autônomo para Linux
+      </h1>
+      <p class="hero-subtitle">
+        O HOSA detecta, contém e estabiliza colapsos do sistema em milissegundos
+        — antes que seu monitoramento sequer perceba.
+        Resiliência endógena para cada nó.
+      </p>
+      <div class="hero-ctas">
+        <a href="#inicio-rapido" class="btn btn-primary">
+          Começar
+          <svg viewBox="0 0 20 20"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+        </a>
+        <a href="https://github.com/bricio-sr/hosa" class="btn btn-secondary" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" style="width:16px;height:16px"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================== O PROBLEMA ======================== -->
+  <section class="section section-alt" id="problema">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">O Problema</span>
+        <h2 class="section-title">O Intervalo Letal</h2>
+        <p class="section-desc">
+          Seu servidor colapsa em <strong>2 segundos</strong>.
+          Seu monitoramento detecta em <strong>100</strong>.
+          Esse gap é onde sistemas morrem — e o HOSA vive.
+        </p>
+      </div>
+
+      <!-- Cards de Comparação -->
+      <div class="comparison-grid">
+        <div class="comparison-card without">
+          <h3><span class="icon">💀</span> Sem HOSA</h3>
+          <ul>
+            <li><span class="icon">✗</span> Memory leak começa. Prometheus faz scrape a cada 15s — não vê nada.</li>
+            <li><span class="icon">✗</span> OOM-Killer dispara em t=40s. Serviço de pagamento morre no meio da transação.</li>
+            <li><span class="icon">✗</span> CrashLoopBackOff. Clientes recebem erros 502.</li>
+            <li><span class="icon">✗</span> Alerta dispara em t=100s — 60 segundos após o primeiro crash.</li>
+          </ul>
+        </div>
+        <div class="comparison-card with">
+          <h3><span class="icon">🛡</span> Com HOSA</h3>
+          <ul>
+            <li><span class="icon">✓</span> Memory leak começa. HOSA detecta aceleração da anomalia em 1 segundo.</li>
+            <li><span class="icon">✓</span> Aplica contenção <code>memory.high</code> em t=2s. Nenhum processo morto.</li>
+            <li><span class="icon">✓</span> Sistema degradado mas vivo. Todas as transações preservadas.</li>
+            <li><span class="icon">✓</span> Operador recebe webhook com contexto dimensional completo em t=2s.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Timeline Visual -->
+      <div class="timeline" aria-label="Timeline de um colapso por memory leak a 50MB/s">
+        <h3 class="timeline-title">Timeline de um Colapso — Memory Leak @ 50MB/s</h3>
+
+        <!-- Resposta HOSA -->
+        <div class="timeline-track">
+          <div class="tl-event">
+            <div class="tl-marker neutral"></div>
+            <div class="tl-time">t=0s</div>
+            <div class="tl-card tl-neutral">
+              <div class="tl-card-head">
+                <h4>Leak Começa</h4>
+              </div>
+              <p>Memory leak começa no <code>payment-service</code>. Taxa: ~50MB/s.</p>
+              <div class="tl-metrics">
+                <span class="tl-pill">mem: 61%</span>
+                <span class="tl-pill">D<sub>M</sub> = 1.1</span>
+                <span class="tl-pill">Nível 0</span>
+              </div>
+              <p class="tl-aside">Prometheus fez último scrape 8s atrás. Próximo scrape em 7s. Dados mostram: "saudável."</p>
+            </div>
+          </div>
+
+          <div class="tl-event">
+            <div class="tl-marker hosa"></div>
+            <div class="tl-time">t=1s</div>
+            <div class="tl-card tl-hosa">
+              <div class="tl-card-head">
+                <h4>HOSA Detecta</h4>
+                <span class="tl-badge hosa-badge">DETECTADO EM 1s</span>
+              </div>
+              <p>Distância de Mahalanobis cruza o limiar de vigilância. Taxa de amostragem aumentada de 100ms para 10ms.</p>
+              <div class="tl-metrics">
+                <span class="tl-pill accent-pill">D<sub>M</sub> = 2.8</span>
+                <span class="tl-pill accent-pill">dD<sub>M</sub>/dt = +1.6</span>
+                <span class="tl-pill accent-pill">Nível 0→1</span>
+              </div>
+              <p class="tl-aside">Prometheus: nenhum scrape neste intervalo. Zero consciência.</p>
+            </div>
+          </div>
+
+          <div class="tl-event">
+            <div class="tl-marker hosa"></div>
+            <div class="tl-time">t=2s</div>
+            <div class="tl-card tl-hosa">
+              <div class="tl-card-head">
+                <h4>HOSA Contém</h4>
+                <span class="tl-badge hosa-badge">CONTIDO EM 2s</span>
+              </div>
+              <p>Contribuidor dominante identificado: <code>/kubepods/pod-payment-service-7b4f</code>.
+                 Ação: <code>memory.high</code> reduzido de 2G → 1.6G. Webhook disparado.</p>
+              <div class="tl-metrics">
+                <span class="tl-pill accent-pill">D<sub>M</sub> = 4.7</span>
+                <span class="tl-pill accent-pill">d²D<sub>M</sub>/dt² = +0.5</span>
+                <span class="tl-pill accent-pill">Nível 1→2</span>
+              </div>
+              <p class="tl-aside">Prometheus: próximo scrape em 5s. Ainda mostrando dados obsoletos de t=-8s.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Callout do Intervalo Letal -->
+        <div class="tl-callout">
+          <div class="tl-callout-icon">⚡</div>
+          <div class="tl-callout-body">
+            <strong>Intervalo Letal: 2 segundos</strong>
+            <p>O HOSA detectou e conteve a anomalia antes que qualquer sistema de monitoramento externo pudesse coletar seu primeiro ponto de dado pós-leak.</p>
+          </div>
+        </div>
+
+        <!-- Estabilização -->
+        <div class="timeline-track">
+          <div class="tl-event">
+            <div class="tl-marker hosa"></div>
+            <div class="tl-time">t=4s</div>
+            <div class="tl-card tl-hosa">
+              <div class="tl-card-head">
+                <h4>Contenção Sustentada</h4>
+              </div>
+              <p>Derivada desacelerando — contenção está funcionando. Nenhuma escalação necessária.</p>
+              <div class="tl-metrics">
+                <span class="tl-pill accent-pill">dD<sub>M</sub>/dt = +1.2 ↓</span>
+                <span class="tl-pill accent-pill">d²D<sub>M</sub>/dt² = −0.45</span>
+              </div>
+              <p class="tl-aside">Prometheus: faz scrape agora. Vê mem=1.47GB. Regra diz &gt;1.8GB por 1m. Resultado: <strong>OK (!)</strong></p>
+            </div>
+          </div>
+
+          <div class="tl-event">
+            <div class="tl-marker hosa"></div>
+            <div class="tl-time">t=8s</div>
+            <div class="tl-card tl-hosa">
+              <div class="tl-card-head">
+                <h4>Sistema Estabilizado</h4>
+                <span class="tl-badge hosa-badge">ESTÁVEL</span>
+              </div>
+              <p>Memória em 74% — platô atingido. Derivada próxima de zero.
+                 Sistema degradado mas <strong>funcional</strong>. Todas as transações preservadas. Nenhum processo morto.</p>
+              <div class="tl-metrics">
+                <span class="tl-pill accent-pill">D<sub>M</sub> = 6.2</span>
+                <span class="tl-pill accent-pill">dD<sub>M</sub>/dt ≈ 0</span>
+                <span class="tl-pill accent-pill">Nível 2</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Divisor Contrafactual -->
+        <div class="tl-divider">
+          <span>Contrafactual — o que acontece sem o HOSA</span>
+        </div>
+
+        <!-- Sem HOSA -->
+        <div class="timeline-track">
+          <div class="tl-event">
+            <div class="tl-marker dead"></div>
+            <div class="tl-time">t=40s</div>
+            <div class="tl-card tl-dead">
+              <div class="tl-card-head">
+                <h4>OOM-Kill</h4>
+                <span class="tl-badge dead-badge">💀 CRASH</span>
+              </div>
+              <p><code>payment-service</code> morto no meio da transação. Dados corrompidos. CrashLoopBackOff começa.
+                 Clientes recebem erros 502.</p>
+            </div>
+          </div>
+
+          <div class="tl-event">
+            <div class="tl-marker prom"></div>
+            <div class="tl-time">t=100s</div>
+            <div class="tl-card tl-prom">
+              <div class="tl-card-head">
+                <h4>Alerta do Prometheus Dispara</h4>
+                <span class="tl-badge prom-badge">⚠ TARDE DEMAIS</span>
+              </div>
+              <p>Alerta dispara 60 segundos após o primeiro crash. A condição <code>for 1m</code> é finalmente satisfeita.
+                 Engenheiro de plantão notificado. Postmortem começa.</p>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end .timeline -->
+    </div>
+  </section>
+
+  <!-- ======================== COMO FUNCIONA ======================== -->
+  <section class="section" id="como-funciona">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Como Funciona</span>
+        <h2 class="section-title">Resiliência Autônoma Bio-Inspirada</h2>
+        <p class="section-desc">
+          Como o arco reflexo humano — sua medula espinhal retrai sua mão do fogo
+          em milissegundos, depois notifica seu cérebro. O HOSA faz o mesmo para seus servidores.
+        </p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="feature-icon">🧬</span>
+          <h3>Detecção Multivariada</h3>
+          <p>Sem thresholds estáticos. O HOSA aprende o <strong>perfil comportamental</strong> do seu nó
+            — como CPU, memória, I/O e rede se correlacionam — e detecta desvios usando a
+            Distância de Mahalanobis. Ele vê padrões que alertas por métrica individual não conseguem.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">⚡</span>
+          <h3>Coleta em Kernel-Space</h3>
+          <p>Métricas coletadas via <strong>probes eBPF</strong> conectadas diretamente a tracepoints do kernel.
+            Sem polling, sem scraping, sem agentes-chamando-agentes.
+            Dados fluem por ring buffers com <strong>latência de microssegundos</strong>.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">📈</span>
+          <h3>Derivadas Preditivas</h3>
+          <p>O HOSA não mede apenas <em>onde</em> você está — ele calcula
+            <strong>velocidade</strong> e <strong>aceleração</strong> do desvio.
+            Ele detecta que você está <em>caminhando</em> para o colapso, não apenas que chegou nele.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🛡️</span>
+          <h3>Resposta Graduada</h3>
+          <p>Seis níveis de resposta, da observação passiva à quarentena autônoma.
+            <strong>Proporcional à severidade</strong>. Sem chaves binárias de kill.
+            Throttle primeiro, contenção depois, isolamento apenas como último recurso.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🔌</span>
+          <h3>Zero Dependências Externas</h3>
+          <p>Sem TSDB, sem message broker, sem API cloud necessária para sua função primária.
+            A comunicação com orquestradores é <strong>oportunística</strong>
+            — usada quando disponível, nunca necessária.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">📋</span>
+          <h3>Decisões Auditáveis</h3>
+          <p>Toda ação autônoma é registrada com sua <strong>justificativa matemática</strong>
+            — valor D<sub>M</sub>, derivada, limiar cruzado, cgroup alvo, ação tomada.
+            Transparência total. Sem caixas pretas.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================== NÍVEIS DE RESPOSTA ======================== -->
+  <section class="section section-alt" id="niveis-resposta">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Resposta Graduada</span>
+        <h2 class="section-title">Seis Níveis de Ação Autônoma</h2>
+        <p class="section-desc">
+          Inspirado na resposta biológica a ameaças.
+          Força proporcional — da observação silenciosa ao isolamento de rede.
+        </p>
+      </div>
+      <div class="levels-table-wrap">
+        <table class="levels-table">
+          <thead>
+            <tr><th>Nível</th><th>Nome</th><th>Ação</th><th>Reversibilidade</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="level-badge level-0"><span class="dot"></span>0</span></td>
+              <td>Homeostase</td>
+              <td>Nenhuma. Suprime telemetria redundante. Apenas heartbeat.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-1"><span class="dot"></span>1</span></td>
+              <td>Vigilância</td>
+              <td>Aumenta taxa de amostragem. Log local. Sem intervenção.</td>
+              <td>Automática</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-2"><span class="dot"></span>2</span></td>
+              <td>Contenção Suave</td>
+              <td><code>renice</code> processos não essenciais. Notificação via webhook.</td>
+              <td>Automática</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-3"><span class="dot"></span>3</span></td>
+              <td>Contenção Ativa</td>
+              <td>Throttling de CPU/memória via cgroups. Load shedding parcial via XDP.</td>
+              <td>Auto c/ histerese</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-4"><span class="dot"></span>4</span></td>
+              <td>Contenção Severa</td>
+              <td>Throttling agressivo. Bloqueia tráfego inbound exceto healthchecks. Congela cgroups não críticos.</td>
+              <td>Recuperação sustentada</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-5"><span class="dot"></span>5</span></td>
+              <td>Quarentena</td>
+              <td>Isolamento de rede. Congela processos não essenciais. Modo de recuperação ciente do ambiente.</td>
+              <td>Manual</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================== ARQUITETURA ======================== -->
+  <section class="section" id="arquitetura">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Arquitetura</span>
+        <h2 class="section-title">O Ciclo Perceptivo-Motor</h2>
+        <p class="section-desc">
+          Três camadas — sensorial (eBPF), córtex (matemática), motora (cgroups/XDP)
+          — operando em loop contínuo com transições kernel↔user em microssegundos.
+        </p>
+      </div>
+
+      <div class="arch-flow">
+        <!-- Kernel Space -->
+        <div class="arch-layer arch-kernel">
+          <div class="arch-layer-head">
+            <span class="arch-tag kernel-tag">Espaço Kernel</span>
+            <span class="arch-tech">eBPF</span>
+          </div>
+          <div class="arch-nodes">
+            <div class="arch-node">
+              <div class="arch-node-icon">📡</div>
+              <h4>Probes Sensoriais</h4>
+              <ul>
+                <li>Tracepoints <span class="text-secondary">(sched, mm, net)</span></li>
+                <li>Kprobes</li>
+                <li>Hooks PSI</li>
+              </ul>
+            </div>
+            <div class="arch-node">
+              <div class="arch-node-icon">⚡</div>
+              <h4>Atuadores</h4>
+              <ul>
+                <li>XDP <span class="text-secondary">(filtragem de pacotes)</span></li>
+                <li>Controllers de cgroup <span class="text-secondary">(cpu, memória)</span></li>
+                <li>Sinais de processo</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ponte de Dados -->
+        <div class="arch-bridge">
+          <div class="arch-bridge-item">
+            <svg class="arch-arrow-down" viewBox="0 0 24 24" width="20" height="20"><path fill="var(--accent)" d="M12 4v12m0 0l-4-4m4 4l4-4"/><path stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4"/></svg>
+            <span>eBPF Ring Buffer</span>
+          </div>
+          <div class="arch-bridge-item">
+            <span>BPF Maps</span>
+            <svg class="arch-arrow-up" viewBox="0 0 24 24" width="20" height="20"><path fill="var(--level-3)" d="M12 20V8m0 0l4 4m-4-4L8 12"/><path stroke="var(--level-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 20V8m0 0l4 4m-4-4L8 12"/></svg>
+          </div>
+        </div>
+
+        <!-- User Space -->
+        <div class="arch-layer arch-user">
+          <div class="arch-layer-head">
+            <span class="arch-tag user-tag">Espaço Usuário</span>
+            <span class="arch-tech">Go</span>
+          </div>
+          <div class="arch-nodes arch-nodes-stack">
+            <div class="arch-node arch-cortex">
+              <div class="arch-node-head">
+                <div class="arch-node-icon">🧠</div>
+                <h4>Córtex Preditivo</h4>
+              </div>
+              <ol class="cortex-steps">
+                <li>Receber eventos do ring buffer</li>
+                <li>Atualizar vetor de estado <strong>x(t)</strong></li>
+                <li>Atualizar <strong>μ</strong> e <strong>Σ</strong> incrementalmente (Welford)</li>
+                <li>Calcular <strong>D<sub>M</sub>(x(t))</strong> — Distância de Mahalanobis</li>
+                <li>Aplicar suavização EWMA → <strong>D̄<sub>M</sub>(t)</strong></li>
+                <li>Calcular <strong>dD̄<sub>M</sub>/dt</strong> e <strong>d²D̄<sub>M</sub>/dt²</strong></li>
+                <li>Avaliar contra limiares adaptativos</li>
+                <li>Determinar nível de resposta <strong>(0–5)</strong></li>
+                <li>Enviar comando de atuação via BPF maps → <span class="text-accent">de volta ao Kernel</span></li>
+              </ol>
+            </div>
+            <div class="arch-node arch-comms">
+              <div class="arch-node-head">
+                <div class="arch-node-icon">📡</div>
+                <h4>Comunicação Oportunística</h4>
+              </div>
+              <div class="arch-comms-items">
+                <span class="arch-comms-chip">Webhooks</span>
+                <span class="arch-comms-chip">Métricas Prometheus</span>
+                <span class="arch-comms-chip">Log de auditoria local</span>
+              </div>
+              <p class="arch-comms-note">Usada quando disponível. Nunca necessária.</p>
+            </div>
+          </div>
+        </div>
+      </div><!-- end .arch-flow -->
+    </div>
+  </section>
+
+  <!-- ======================== INÍCIO RÁPIDO ======================== -->
+  <section class="section section-alt" id="inicio-rapido">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Início Rápido</span>
+        <h2 class="section-title">Em Breve</h2>
+        <p class="section-desc">
+          Estamos construindo ativamente a primeira release pública.<br />
+          Dê uma estrela no repositório para ser notificado quando sair.
+        </p>
+      </div>
+      <div class="coming-soon-box">
+        <div class="coming-soon-icon">🚧</div>
+        <h3>Em Construção</h3>
+        <p>
+          O HOSA está atualmente em desenvolvimento alpha. Instruções de instalação,
+          binários pré-compilados e guias de início rápido estarão disponíveis aqui
+          assim que a primeira release pública estiver pronta.
+        </p>
+        <a href="https://github.com/bricio-sr/hosa" class="btn btn-secondary" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" style="width:16px;height:16px"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          Acompanhar no GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================== DOCUMENTAÇÃO ======================== -->
+  <section class="section" id="docs">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Documentação</span>
+        <h2 class="section-title">Mergulho Profundo</h2>
+        <p class="section-desc">Dos conceitos aos detalhes de implementação.</p>
+      </div>
+      <div class="docs-grid">
+        <a href="../docs/concepts.html" class="doc-card">
+          <span class="doc-card-icon">💡</span>
+          <div><h3>Conceitos Fundamentais</h3><p>Resiliência Endógena, o Intervalo Letal e por que autonomia local importa.</p></div>
+          <span class="arrow">→</span>
+        </a>
+        <a href="../docs/architecture.html" class="doc-card">
+          <span class="doc-card-icon">🏗️</span>
+          <div><h3>Arquitetura</h3><p>O ciclo perceptivo-motor, calibração warm-up e decisões de design do sistema.</p></div>
+          <span class="arrow">→</span>
+        </a>
+        <a href="../docs/math-model.html" class="doc-card">
+          <span class="doc-card-icon">📐</span>
+          <div><h3>Modelo Matemático</h3><p>Distância de Mahalanobis, atualizações Welford, EWMA, derivadas e taxonomia de regimes.</p></div>
+          <span class="arrow">→</span>
+        </a>
+        <a href="../docs/response-system.html" class="doc-card">
+          <span class="doc-card-icon">🛡️</span>
+          <div><h3>Sistema de Resposta</h3><p>Seis níveis graduados, atuação via cgroups, load shedding XDP, modos de quarentena.</p></div>
+          <span class="arrow">→</span>
+        </a>
+        <a href="../docs/configuration.html" class="doc-card">
+          <span class="doc-card-icon">⚙️</span>
+          <div><h3>Configuração</h3><p>Parâmetros, safelists, detecção de ambiente e guia de tunning.</p></div>
+          <span class="arrow">→</span>
+        </a>
+        <a href="../docs/whitepaper.pdf" class="doc-card">
+          <span class="doc-card-icon">📄</span>
+          <div><h3>Whitepaper v2.1</h3><p>Fundamento acadêmico completo — 52 páginas cobrindo teoria, taxonomia e plano de validação.</p></div>
+          <span class="arrow">→</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================== RODAPÉ ======================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-left">
+          <strong>HOSA</strong> — Homeostasis Operating System Agent
+          <p>Projeto de pesquisa · IMECC/Unicamp · GPL-3.0</p>
+        </div>
+        <ul class="footer-links">
+          <li><a href="https://github.com/bricio-sr/hosa" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="../docs/whitepaper.pdf">Whitepaper</a></li>
+          <li><a href="#docs">Docs</a></li>
+          <li><a href="https://github.com/bricio-sr/hosa/issues" target="_blank" rel="noopener">Issues</a></li>
+        </ul>
+      </div>
+      <div class="footer-quote">
+        <blockquote>
+          "Se o colapso acontece no intervalo entre percepção e ação exógena,
+          a capacidade de decisão imediata deve residir no próprio nó."
+        </blockquote>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('navToggle').addEventListener('click', function () {
+      const nav = document.getElementById('navLinks');
+      const expanded = this.getAttribute('aria-expanded') === 'true';
+      nav.classList.toggle('open');
+      this.setAttribute('aria-expanded', !expanded);
+    });
+  </script>
+</body>
+</html>

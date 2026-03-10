@@ -473,58 +473,24 @@
     <div class="container">
       <div class="section-header">
         <span class="section-label">Quick Start</span>
-        <h2 class="section-title">Up and Running in 60 Seconds</h2>
+        <h2 class="section-title">Coming Soon</h2>
         <p class="section-desc">
-          Linux ≥ 5.8 · Root privileges · No build tools required
+          We're actively building the first public release.<br />
+          Star the repo to get notified when it drops.
         </p>
       </div>
-      <div class="quickstart-steps">
-        <div class="quickstart-step">
-          <div class="step-header">
-            <span class="step-number">1</span>
-            <h3>Download the latest release</h3>
-          </div>
-          <div class="code-block">
-            <pre><span class="comment"># Download the latest binary for your architecture</span>
-<span class="command">curl</span> -sL https://github.com/bricio-sr/hosa/releases/latest/download/hosa-linux-amd64.tar.gz -o hosa.tar.gz
-
-<span class="comment"># Extract</span>
-<span class="command">tar</span> -xzf hosa.tar.gz
-
-<span class="comment"># Make executable and move to PATH</span>
-<span class="command">chmod</span> +x hosa
-<span class="command">sudo mv</span> hosa /usr/local/bin/</pre>
-          </div>
-          <p class="step-note">
-            ARM64 (Raspberry Pi, Graviton): replace <code>amd64</code> with <code>arm64</code>.
-            All releases → <a href="https://github.com/bricio-sr/hosa/releases" target="_blank" rel="noopener">GitHub Releases</a>
-          </p>
-        </div>
-        <div class="quickstart-step">
-          <div class="step-header">
-            <span class="step-number">2</span>
-            <h3>Run in Dry-Run Mode</h3>
-          </div>
-          <div class="code-block">
-            <pre><span class="comment"># Observe and log — no actuation. Safe to explore.</span>
-<span class="command">sudo</span> hosa --mode=dry-run</pre>
-          </div>
-        </div>
-        <div class="quickstart-step">
-          <div class="step-header">
-            <span class="step-number">3</span>
-            <h3>Watch Decisions</h3>
-          </div>
-          <div class="code-block">
-            <pre><span class="command">tail</span> -f /var/log/hosa/decisions.log
-
-<span class="comment"># [14:23:08Z] LEVEL=1 D_M=2.8 dDM/dt=+1.6</span>
-<span class="comment">#   dominant=mem_used(72%) action=increase_sampling</span>
-<span class="comment"># [14:23:09Z] LEVEL=2 D_M=4.7 dDM/dt=+2.1</span>
-<span class="comment">#   target=/kubepods/pod-payment-7b4f</span>
-<span class="comment">#   action=memory.high 2G→1.6G reason=mem_used(68%)</span></pre>
-          </div>
-        </div>
+      <div class="coming-soon-box">
+        <div class="coming-soon-icon">🚧</div>
+        <h3>Under Construction</h3>
+        <p>
+          HOSA is currently in alpha development. Installation instructions,
+          pre-built binaries, and quick-start guides will be available here
+          once the first public release is ready.
+        </p>
+        <a href="https://github.com/bricio-sr/hosa" class="btn btn-secondary" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" style="width:16px;height:16px"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          Watch on GitHub
+        </a>
       </div>
     </div>
   </section>
@@ -578,7 +544,7 @@
       <div class="footer-content">
         <div class="footer-left">
           <strong>HOSA</strong> — Homeostasis Operating System Agent
-          <p>Research project · IMECC/Unicamp · Apache 2.0</p>
+          <p>Research project · IMECC/Unicamp · GPL-3.0</p>
         </div>
         <ul class="footer-links">
           <li><a href="https://github.com/bricio-sr/hosa" target="_blank" rel="noopener">GitHub</a></li>

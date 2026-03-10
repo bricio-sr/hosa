@@ -1513,3 +1513,42 @@ code {
     padding: 2px 8px;
   }
 }
+
+/* ============================================================
+   COMING SOON — Quick Start placeholder
+   ============================================================ */
+.coming-soon-box {
+  max-width: 560px;
+  margin: 0 auto;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-hover);
+  border-radius: 16px;
+  padding: 48px 36px;
+}
+
+.coming-soon-icon {
+  font-size: 2.5rem;
+  margin-bottom: 16px;
+}
+
+.coming-soon-box h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.coming-soon-box p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 28px;
+  max-width: 440px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.coming-soon-box .btn {
+  display: inline-flex;
+}

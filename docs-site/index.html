@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HOSA — Homeostasis Operating System Agent</title>
+  <meta name="description" content="An autonomous nervous system for Linux. Detects, contains, and stabilizes system collapse in milliseconds — before your monitoring even notices." />
+  <meta name="keywords" content="HOSA, eBPF, Linux, SRE, anomaly detection, Mahalanobis, autonomous, resilience, edge computing" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="HOSA — Homeostasis Operating System Agent" />
+  <meta property="og:description" content="An autonomous nervous system for Linux. Detects and contains collapse in milliseconds." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://bricio-sr.github.io/hosa/" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ======================== NAVIGATION ======================== -->
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="container">
+      <a href="/" class="nav-brand">
+        <span class="brand-dot"></span>
+        HOSA
+      </a>
+
+      <ul class="nav-links" id="navLinks">
+        <li class="active"><a href="/">Home</a></li>
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#quickstart">Quick Start</a></li>
+        <li><a href="#docs">Docs</a></li>
+      </ul>
+
+      <div class="nav-right">
+        <div class="lang-switch">
+          <a href="/" class="active">EN</a>
+          <a href="/pt/">PT</a>
+        </div>
+        <a href="https://github.com/bricio-sr/hosa" class="nav-github" aria-label="GitHub" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+
+  <!-- ======================== HERO ======================== -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        Alpha — Under active development
+      </div>
+
+      <h1>
+        An autonomous<br />
+        <span class="accent-word">nervous system</span><br />
+        for Linux
+      </h1>
+
+      <p class="hero-subtitle">
+        HOSA detects, contains, and stabilizes system collapse in milliseconds
+        — before your monitoring even notices.
+        Endogenous resilience for every node.
+      </p>
+
+      <div class="hero-ctas">
+        <a href="#quickstart" class="btn btn-primary">
+          Get Started
+          <svg viewBox="0 0 20 20"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+        </a>
+        <a href="https://github.com/bricio-sr/hosa" class="btn btn-secondary" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" style="width:16px;height:16px"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================== THE PROBLEM ======================== -->
+  <section class="section section-alt" id="problem">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">The Problem</span>
+        <h2 class="section-title">The Lethal Interval</h2>
+        <p class="section-desc">
+          Your server crashes in <strong>2 seconds</strong>.
+          Your monitoring detects it in <strong>100</strong>.
+          That gap is where systems die — and HOSA lives.
+        </p>
+      </div>
+
+      <div class="comparison-grid">
+        <div class="comparison-card without">
+          <h3>
+            <span class="icon">💀</span>
+            Without HOSA
+          </h3>
+          <ul>
+            <li>
+              <span class="icon">✗</span>
+              Memory leak starts. Prometheus scrapes every 15s — sees nothing.
+            </li>
+            <li>
+              <span class="icon">✗</span>
+              OOM-Killer fires at t=40s. Payment service dies mid-transaction.
+            </li>
+            <li>
+              <span class="icon">✗</span>
+              CrashLoopBackOff. Customers get 502 errors.
+            </li>
+            <li>
+              <span class="icon">✗</span>
+              Alert fires at t=100s — 60 seconds after the first crash.
+            </li>
+          </ul>
+        </div>
+        <div class="comparison-card with">
+          <h3>
+            <span class="icon">🛡</span>
+            With HOSA
+          </h3>
+          <ul>
+            <li>
+              <span class="icon">✓</span>
+              Memory leak starts. HOSA detects anomaly acceleration in 1 second.
+            </li>
+            <li>
+              <span class="icon">✓</span>
+              Applies <code>memory.high</code> containment at t=2s. No process killed.
+            </li>
+            <li>
+              <span class="icon">✓</span>
+              System degraded but alive. All transactions preserved.
+            </li>
+            <li>
+              <span class="icon">✓</span>
+              Operator gets webhook with full dimensional context at t=2s.
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="lethal-diagram">
+        <pre>
+<span class="hl-label">  TIMELINE OF A COLLAPSE — MEMORY LEAK @ 50MB/s</span>
+
+  t=0s         t=1s          t=2s            t=8s               t=40s          t=100s
+   │            │             │                │                   │               │
+   │ Leak       │ <span class="hl-hosa">HOSA</span>         │ <span class="hl-hosa">HOSA</span>            │ <span class="hl-hosa">HOSA</span>              │ <span class="hl-dead">WITHOUT</span>        │ <span class="hl-prom">Prometheus</span>
+   │ starts     │ <span class="hl-hosa">detects</span>      │ <span class="hl-hosa">contains</span>         │ <span class="hl-hosa">stabilizes</span>        │ <span class="hl-dead">HOSA:</span>          │ <span class="hl-prom">fires alert</span>
+   │            │ <span class="hl-hosa">(Level 1)</span>    │ <span class="hl-hosa">(memory.high)</span>    │ <span class="hl-hosa">system</span>            │ <span class="hl-dead">OOM-Kill 💀</span>    │ <span class="hl-prom">(too late)</span>
+   │            │              │                │                   │               │
+   ├────────────┴──────────────┤                │                   │               │
+   │  <span class="hl-hosa">LETHAL INTERVAL (2s)</span>      │                │                   │               │
+   │  <span class="hl-hosa">HOSA acted here</span>           │                │                   │               │
+   └───────────────────────────┘                │                   │               │
+                                                │                   │               │
+                  ┌─────────────────────────────┘                   │               │
+                  │  <span class="hl-hosa">System degraded but ALIVE</span>                    │               │
+                  │  <span class="hl-hosa">Transactions preserved</span>                       │               │
+                  └──────────────────────────────────────────────────┘               │
+                                                                                    │
+                                         ┌──────────────────────────────────────────┘
+                                         │  <span class="hl-dead">WITHOUT HOSA: crash → 502 → CrashLoopBackOff</span>
+                                         │  <span class="hl-dead">→ late alert → angry customers → postmortem</span>
+                                         └─────────────────────────────────────────────</pre>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================== HOW IT WORKS ======================== -->
+  <section class="section" id="how-it-works">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">How It Works</span>
+        <h2 class="section-title">Bio-Inspired Autonomous Resilience</h2>
+        <p class="section-desc">
+          Like the human reflex arc — your spinal cord retracts your hand from fire
+          in milliseconds, then notifies your brain. HOSA does the same for your servers.
+        </p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="feature-icon">🧬</span>
+          <h3>Multivariate Detection</h3>
+          <p>
+            No static thresholds. HOSA learns the <strong>behavioral profile</strong> of your node
+            — how CPU, memory, I/O, and network correlate — and detects deviations using the
+            Mahalanobis Distance. It sees patterns that per-metric alerts miss.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">⚡</span>
+          <h3>Kernel-Space Collection</h3>
+          <p>
+            Metrics collected via <strong>eBPF probes</strong> attached directly to kernel tracepoints.
+            No polling, no scraping, no agents-calling-agents.
+            Data flows through ring buffers with <strong>microsecond latency</strong>.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">📈</span>
+          <h3>Predictive Derivatives</h3>
+          <p>
+            HOSA doesn't just measure <em>where</em> you are — it calculates
+            <strong>velocity</strong> and <strong>acceleration</strong> of deviation.
+            It detects that you're heading toward collapse, not just that you've arrived.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🛡️</span>
+          <h3>Graduated Response</h3>
+          <p>
+            Six response levels from passive observation to autonomous quarantine.
+            <strong>Proportional to severity</strong>. No binary kill switches.
+            Throttle first, contain second, isolate only as last resort.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🔌</span>
+          <h3>Zero External Dependencies</h3>
+          <p>
+            No TSDB, no message broker, no cloud API required for its primary function.
+            Communication with orchestrators is <strong>opportunistic</strong>
+            — used when available, never required.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">📋</span>
+          <h3>Auditable Decisions</h3>
+          <p>
+            Every autonomous action is logged with its <strong>mathematical justification</strong>
+            — D<sub>M</sub> value, derivative, threshold crossed, target cgroup, action taken.
+            Full transparency. No black boxes.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================== RESPONSE LEVELS ======================== -->
+  <section class="section section-alt" id="response-levels">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Graduated Response</span>
+        <h2 class="section-title">Six Levels of Autonomous Action</h2>
+        <p class="section-desc">
+          Inspired by biological threat response.
+          Proportional force — from silent observation to network isolation.
+        </p>
+      </div>
+
+      <div class="levels-table-wrap">
+        <table class="levels-table">
+          <thead>
+            <tr>
+              <th>Level</th>
+              <th>Name</th>
+              <th>Action</th>
+              <th>Reversibility</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="level-badge level-0"><span class="dot"></span>0</span></td>
+              <td>Homeostasis</td>
+              <td>None. Suppress redundant telemetry. Heartbeat only.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-1"><span class="dot"></span>1</span></td>
+              <td>Vigilance</td>
+              <td>Increase sampling rate. Log locally. No intervention.</td>
+              <td>Automatic</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-2"><span class="dot"></span>2</span></td>
+              <td>Soft Containment</td>
+              <td><code>renice</code> non-essential processes. Webhook notification.</td>
+              <td>Automatic</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-3"><span class="dot"></span>3</span></td>
+              <td>Active Containment</td>
+              <td>CPU/memory throttling via cgroups. Partial load shedding via XDP.</td>
+              <td>Auto w/ hysteresis</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-4"><span class="dot"></span>4</span></td>
+              <td>Severe Containment</td>
+              <td>Aggressive throttling. Block inbound traffic except healthchecks. Freeze non-critical cgroups.</td>
+              <td>Sustained recovery</td>
+            </tr>
+            <tr>
+              <td><span class="level-badge level-5"><span class="dot"></span>5</span></td>
+              <td>Quarantine</td>
+              <td>Network isolation. Freeze non-essential processes. Environment-aware recovery mode.</td>
+              <td>Manual</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================== ARCHITECTURE ======================== -->
+  <section class="section" id="architecture">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Architecture</span>
+        <h2 class="section-title">The Perceptive-Motor Cycle</h2>
+        <p class="section-desc">
+          Three layers — sensory (eBPF), cortex (math), motor (cgroups/XDP)
+          — operating in a continuous loop with microsecond kernel↔user transitions.
+        </p>
+      </div>
+
+      <div class="arch-diagram">
+        <pre>
+<span class="hl-label">┌─────────────────────────────────────────────────────────────┐</span>
+<span class="hl-label">│                    KERNEL SPACE (eBPF)                       │</span>
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │   <span class="hl-hosa">Sensory</span>    │  │   <span class="hl-hosa">Sensory</span>    │  │    <span class="hl-prom">Actuators</span>      │  │
+│  │   <span class="hl-hosa">Probes</span>     │  │   <span class="hl-hosa">Probes</span>     │  │  <span class="hl-prom">(XDP / cgroup</span>    │  │
+│  │ (tracepoints │  │  (kprobes,   │  │   <span class="hl-prom">controllers)</span>   │  │
+│  │  sched, mm,  │  │  PSI hooks)  │  │                   │  │
+│  │  net)        │  │              │  │                   │  │
+│  └──────┬───────┘  └──────┬───────┘  └────────▲──────────┘  │
+│         │                 │                   │              │
+│         ▼                 ▼                   │              │
+│  ┌──────────────────────────────┐              │              │
+│  │     eBPF Ring Buffer        │              │              │
+│  └──────────────┬───────────────┘              │              │
+├─────────────────┼─────────────────────────────┼──────────────┤
+│                 ▼      <span class="hl-label">USER SPACE</span>             │              │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │          <span class="hl-hosa">PREDICTIVE CORTEX (Go)</span>                      │    │
+│  │                                                      │    │
+│  │  1. Receive events from ring buffer                  │    │
+│  │  2. Update state vector x(t)                         │    │
+│  │  3. Update μ and Σ incrementally (Welford)           │    │
+│  │  4. Calculate D_M(x(t))  — Mahalanobis Distance     │    │
+│  │  5. Apply EWMA smoothing → D̄_M(t)                   │    │
+│  │  6. Calculate dD̄_M/dt and d²D̄_M/dt²                 │    │
+│  │  7. Evaluate against adaptive thresholds             │    │
+│  │  8. Determine response level (0–5)                   │    │
+│  │  9. Send actuation command via BPF maps         ─────┘    │
+│  └──────────────────────────────────────────────────────┘    │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │       <span class="hl-label">OPPORTUNISTIC COMMUNICATION</span>                   │    │
+│  │  · Webhooks (when network available)                 │    │
+│  │  · Prometheus-compatible metrics endpoint            │    │
+│  │  · Local structured log (audit trail)                │    │
+│  └──────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘</pre>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================== QUICK START ======================== -->
+  <section class="section section-alt" id="quickstart">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Quick Start</span>
+        <h2 class="section-title">Up and Running in 60 Seconds</h2>
+        <p class="section-desc">
+          Linux ≥ 5.8 · Go ≥ 1.22 · clang/llvm · Root privileges
+        </p>
+      </div>
+
+      <div class="quickstart-steps">
+        <div class="quickstart-step">
+          <div class="step-header">
+            <span class="step-number">1</span>
+            <h3>Clone & Build</h3>
+          </div>
+          <div class="code-block">
+            <pre><span class="command">git clone</span> https://github.com/bricio-sr/hosa.git
+<span class="command">cd</span> hosa
+<span class="command">make</span> build</pre>
+          </div>
+        </div>
+
+        <div class="quickstart-step">
+          <div class="step-header">
+            <span class="step-number">2</span>
+            <h3>Run in Dry-Run Mode</h3>
+          </div>
+          <div class="code-block">
+            <pre><span class="comment"># Observe and log — no actuation. Safe to explore.</span>
+<span class="command">sudo</span> ./hosa --mode=dry-run</pre>
+          </div>
+        </div>
+
+        <div class="quickstart-step">
+          <div class="step-header">
+            <span class="step-number">3</span>
+            <h3>Watch Decisions</h3>
+          </div>
+          <div class="code-block">
+            <pre><span class="command">tail</span> -f /var/log/hosa/decisions.log
+
+<span class="comment"># [14:23:08Z] LEVEL=1 D_M=2.8 dDM/dt=+1.6</span>
+<span class="comment">#   dominant=mem_used(72%) action=increase_sampling</span>
+<span class="comment"># [14:23:09Z] LEVEL=2 D_M=4.7 dDM/dt=+2.1</span>
+<span class="comment">#   target=/kubepods/pod-payment-7b4f</span>
+<span class="comment">#   action=memory.high 2G→1.6G reason=mem_used(68%)</span></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================== DOCUMENTATION ======================== -->
+  <section class="section" id="docs">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Documentation</span>
+        <h2 class="section-title">Deep Dive</h2>
+        <p class="section-desc">
+          From concepts to implementation details.
+        </p>
+      </div>
+
+      <div class="docs-grid">
+        <a href="docs/concepts.html" class="doc-card">
+          <span class="doc-card-icon">💡</span>
+          <div>
+            <h3>Core Concepts</h3>
+            <p>Endogenous Resilience, the Lethal Interval, and why local autonomy matters.</p>
+          </div>
+          <span class="arrow">→</span>
+        </a>
+
+        <a href="docs/architecture.html" class="doc-card">
+          <span class="doc-card-icon">🏗️</span>
+          <div>
+            <h3>Architecture</h3>
+            <p>The perceptive-motor cycle, warm-up calibration, and system design decisions.</p>
+          </div>
+          <span class="arrow">→</span>
+        </a>
+
+        <a href="docs/math-model.html" class="doc-card">
+          <span class="doc-card-icon">📐</span>
+          <div>
+            <h3>Math Model</h3>
+            <p>Mahalanobis Distance, Welford updates, EWMA, derivatives, and regime taxonomy.</p>
+          </div>
+          <span class="arrow">→</span>
+        </a>
+
+        <a href="docs/response-system.html" class="doc-card">
+          <span class="doc-card-icon">🛡️</span>
+          <div>
+            <h3>Response System</h3>
+            <p>Six graduated levels, cgroups actuation, XDP load shedding, quarantine modes.</p>
+          </div>
+          <span class="arrow">→</span>
+        </a>
+
+        <a href="docs/configuration.html" class="doc-card">
+          <span class="doc-card-icon">⚙️</span>
+          <div>
+            <h3>Configuration</h3>
+            <p>Parameters, safelists, environment detection, and tuning guide.</p>
+          </div>
+          <span class="arrow">→</span>
+        </a>
+
+        <a href="docs/whitepaper.pdf" class="doc-card">
+          <span class="doc-card-icon">📄</span>
+          <div>
+            <h3>Whitepaper v2.1</h3>
+            <p>Full academic foundation — 52 pages covering theory, taxonomy, and validation plan.</p>
+          </div>
+          <span class="arrow">→</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================== FOOTER ======================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-left">
+          <strong>HOSA</strong> — Homeostasis Operating System Agent
+          <p>Research project · IMECC/Unicamp · Apache 2.0</p>
+        </div>
+        <ul class="footer-links">
+          <li><a href="https://github.com/bricio-sr/hosa" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="docs/whitepaper.pdf">Whitepaper</a></li>
+          <li><a href="#docs">Docs</a></li>
+          <li><a href="https://github.com/bricio-sr/hosa/issues" target="_blank" rel="noopener">Issues</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-quote">
+        <blockquote>
+          "If collapse happens in the interval between perception and exogenous action,
+          the capacity for immediate decision must reside in the node itself."
+        </blockquote>
+      </div>
+    </div>
+  </footer>
+
+
+  <!-- Minimal JS — mobile menu only -->
+  <script>
+    document.getElementById('navToggle').addEventListener('click', function () {
+      const nav = document.getElementById('navLinks');
+      const expanded = this.getAttribute('aria-expanded') === 'true';
+      nav.classList.toggle('open');
+      this.setAttribute('aria-expanded', !expanded);
+    });
+  </script>
+
+</body>
+</html>

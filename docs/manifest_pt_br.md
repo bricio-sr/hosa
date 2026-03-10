@@ -1,13 +1,23 @@
-
-
 # HOSA — Homeostasis Operating System Agent
 
 ## Whitepaper & Manifesto Arquitetural
 
-**Autor:** Fabrício Roney de Amorim
-**Versão do Documento:** 2.0 — Revisão Crítica
-**Contexto Acadêmico:** Fundamentação para dissertação de Mestrado — Unicamp
+**Autor:** Fabricio Roney de Amorim
+**Versão do Documento:** 2.1 — Revisão Crítica
+**Data de Criação:** 9 de março de 2026
+**Data desta Revisão:** 10 de março de 2026
+**Contexto Acadêmico:** Fundamentação de intenção para dissertação de Mestrado — Unicamp (IMECC)
 **Status:** Documento de Visão e Fundamentação Teórica
+
+**Registro de Integridade:**
+- Repositório de referência: https://github.com/bricio-sr/hosa
+
+**Histórico de Versões:**
+| Versão | Data | Descrição |
+|---|---|---|
+| 1.0 | 09/03/2026 | Primeira versão do whitepaper. Conceito inicial. |
+| 2.0 | 10/03/2026 | Revisão crítica: taxonomia bipolar, métricas suplementares, resposta graduada expandida. |
+| 2.1 | 10/03/2026 | Blindagem de objeções: robustez sob não-normalidade, calibração de ICP, quarentena por ambiente, walkthrough narrativo, FAQ. |
 
 ---
 
@@ -42,6 +52,71 @@ A fragilidade estrutural do modelo exógeno manifesta-se em duas dimensões:
 O colapso de um nó computacional não é um processo gradual e linear; é uma cascata exponencial. Quando a memória física se esgota, o Kernel Linux aciona o OOM-Killer (Out-Of-Memory Killer), encerrando processos abruptamente com base em heurísticas de pontuação, corrompendo transações em andamento e gerando indisponibilidade imediata. O mecanismo `systemd-oomd` (Poettering, 2020) e o subsistema PSI (Pressure Stall Information) do kernel (Weiner, 2018) representam tentativas do próprio ecossistema Linux de endereçar esta lacuna, mas operam com escopo limitado: PSI fornece métricas de pressão sem capacidade de mitigação autônoma, e `systemd-oomd` atua com políticas estáticas que não consideram correlação multivariável entre recursos.
 
 O intervalo temporal entre o início do estresse letal e a chegada da primeira métrica utilizável ao sistema de monitoramento externo constitui o que este trabalho denomina **Intervalo Letal** — a janela onde sistemas morrem sem que o observador externo tenha sequer consciência do problema.
+
+#### Figura 1 — Visualização Temporal do Intervalo Letal: HOSA vs. Modelo Exógeno
+
+```
+LINHA DO TEMPO DE UM COLAPSO — MEMORY LEAK A 50MB/s
+
+Tempo    │ Estado do Nó           │ HOSA (Endógeno)        │ Prometheus+Alertmanager
+(seg)    │                        │                        │ (Exógeno)
+─────────┼────────────────────────┼────────────────────────┼─────────────────────────
+         │                        │                        │
+  t=0    │ Leak inicia            │ D_M=1.1 (homeostase)   │ Último scrape há 8s
+         │ mem: 61%               │ Nível 0                │ Dados mostram: "saudável"
+         │                        │                        │
+  t=1    │ mem: 64%               │ ⚡ D_M=2.8 DETECTA      │
+         │ PSI: 18%               │ Nível 0→1 (Vigilância) │ (sem scrape)
+         │                        │ Amostragem: 100ms→10ms │
+         │                        │                        │
+  t=2    │ mem: 68%               │ ⚡ D_M=4.7 CONTÉM       │
+         │ PSI: 29%               │ Nível 1→2 (Contenção)  │ (sem scrape)
+         │ swap ativando          │ memory.high → 1.6G     │
+         │                        │ Webhook disparado      │
+         │                        │                        │
+  t=4    │ mem: 72%               │ dD̄/dt desacelerando    │ Scrape! Coleta mem=1.47G
+         │ (contido pelo HOSA)    │ Contenção eficaz       │ Regra: >1.8G for 1m
+         │                        │ Mantém Nível 2         │ Resultado: OK (!)
+         │                        │                        │
+  t=8    │ mem: 74%               │ ✓ ESTABILIZADO         │
+         │ (platô de contenção)   │ Sistema degradado      │ (sem scrape)
+         │                        │ mas funcional          │
+         │                        │                        │
+  t=15   │ mem: 74%               │ ✓ Mantém contenção     │ Scrape. mem=1.52G
+         │                        │                        │ Resultado: OK (!)
+         │                        │                        │
+  t=30   │ mem: 75%               │ ✓ Mantém contenção     │ Scrape. mem=1.55G
+         │                        │ Operador recebeu       │ Resultado: OK (!)
+         │                        │ webhook, investiga     │
+         │                        │                        │
+─────────┼────────────────────────┼────────────────────────┼─────────────────────────
+         │                        │                        │
+         │     CENÁRIO            │     COM HOSA           │     SEM HOSA
+         │  CONTRAFACTUAL         │                        │
+         │  (sem HOSA)            │                        │
+─────────┼────────────────────────┼────────────────────────┼─────────────────────────
+         │                        │                        │
+  t=40   │ ☠ OOM-Kill             │ ✓ Sistema contido      │ Scrape. Detecta restart.
+         │ payment-service morto  │ Transações preservadas │ Ainda sem alerta
+         │ Transações corrompidas │                        │ (for 1m não satisfeito)
+         │                        │                        │
+  t=80   │ ☠ 2° crash             │ ✓ Sistema contido      │ Scrape. CrashLoopBackOff
+         │ CrashLoopBackOff       │ Operador fazendo       │ detectado.
+         │                        │ rollback               │
+         │                        │                        │
+  t=100  │ ☠ Clientes com 502     │ ✓ Rollback concluído   │ ⚠ ALERTA DISPARADO
+         │ desde t=40             │ Sistema recuperado     │ (60s após 1° crash)
+         │                        │                        │
+─────────┴────────────────────────┴────────────────────────┴─────────────────────────
+
+         ├──── 2s ────┤
+         │HOSA atuou  │
+         │   aqui     │
+         │            │
+         │            ├─────────────────────────── 98s ───────────────────────────┤
+         │            │           Prometheus atuou aqui                           │
+         │            │           (100x mais lento)                               │
+```
 
 ### 1.3. A Tese Central
 
@@ -168,6 +243,77 @@ A Distância de Mahalanobis requer $\Sigma^{-1}$. Para dimensionalidade moderada
 
 **Degenerescência:** Em sistemas com variáveis altamente colineares (e.g., `cpu_user` e `cpu_total`), $\Sigma$ pode tornar-se singular ou mal-condicionada. O HOSA aplica **regularização de Tikhonov** ($\Sigma_{reg} = \Sigma + \lambda I$, com $\lambda$ pequeno) para garantir invertibilidade.
 
+### 4.6. Robustez da Distância de Mahalanobis sob Violações de Normalidade
+
+A Distância de Mahalanobis, conforme formulada na Seção 4.2, assume implicitamente que o perfil basal do sistema segue uma distribuição aproximadamente elipsoidal (multivariável normal). Esta suposição merece análise explícita, pois métricas de kernel em sistemas reais frequentemente exibem características que a violam.
+
+#### 4.6.1. Natureza das Violações Esperadas
+
+Três classes de violação são empiricamente prevalentes em métricas de sistemas operacionais:
+
+| Classe de Violação | Exemplo em Métricas de Kernel | Impacto na $D_M$ |
+|---|---|---|
+| **Caudas pesadas (heavy-tailed)** | Latência de I/O de disco: a maioria das operações completa em microsegundos, mas outliers de centenas de milissegundos ocorrem com frequência maior que a prevista pela distribuição normal. | $D_M$ subestima a frequência de valores extremos legítimos, potencialmente gerando falsos positivos em eventos de cauda. |
+| **Assimetria (skewness)** | Utilização de CPU: distribuição frequentemente concentrada próximo de 0% (sistema ocioso) ou próximo de 100% (sistema saturado), com assimetria dependente do regime operacional. | $\vec{\mu}$ e $\Sigma$ podem não representar adequadamente o centro e a dispersão da distribuição real, deslocando o detector. |
+| **Multimodalidade** | Sistemas que alternam entre dois regimes operacionais distintos (e.g., servidor batch que processa jobs a cada hora — alternância entre ociosidade total e carga plena). | $\vec{\mu}$ calculado como média aritmética localiza-se **entre** os dois modos, onde poucas amostras reais existem. $D_M$ classifica o comportamento normal de ambos os modos como anômalo. |
+
+#### 4.6.2. Evidência de Robustez na Literatura
+
+A robustez da Distância de Mahalanobis como detector de outliers sob violações moderadas de normalidade é documentada na literatura:
+
+- **Gnanadesikan & Kettenring (1972)** demonstraram que estimadores baseados em covariância mantêm capacidade discriminativa sob distribuições elípticas não-normais (e.g., distribuições $t$ multivariadas), perdendo a interpretação probabilística exata (a relação com a distribuição $\chi^2$ não se mantém) mas preservando a **ordenação relativa** de anomalias — observações mais anômalas continuam produzindo $D_M$ maiores.
+
+- **Penny (1996)** analisou a performance de $D_M$ como critério de classificação sob diversas distribuições não-gaussianas, confirmando degradação graciosa: a taxa de erro aumenta sob violações severas, mas o detector não colapsa abruptamente.
+
+- **Hubert, Debruyne & Rousseeuw (2018)** demonstraram que a combinação de $D_M$ com estimadores robustos de localização e dispersão preserva a eficácia de detecção mesmo sob contaminação de até 25% das amostras por outliers.
+
+O HOSA opera primariamente sobre a **taxa de variação** de $D_M$ (derivadas), não sobre seu valor absoluto. Mesmo que o valor absoluto de $D_M$ perca a interpretação probabilística exata sob não-normalidade, as derivadas $\frac{dD_M}{dt}$ e $\frac{d^2D_M}{dt^2}$ permanecem indicadores válidos de **aceleração em direção ao colapso**, pois refletem a dinâmica temporal do desvio, não sua magnitude probabilística.
+
+#### 4.6.3. Estratégia de Mitigação: Estimação Robusta
+
+Para endereçar violações severas quando detectadas, o HOSA implementa uma estratégia de dois níveis:
+
+**Nível 1 — Regularização (padrão).** A regularização de Tikhonov já aplicada ($\Sigma_{reg} = \Sigma + \lambda I$) mitiga parcialmente a sensibilidade a outliers ao estabilizar a inversão da matriz de covariância, funcionando como uma forma de shrinkage que aproxima $\Sigma^{-1}$ da identidade.
+
+**Nível 2 — Estimação robusta (ativação condicional).** Quando o HOSA detecta que a distribuição basal viola severamente a normalidade — operacionalizado via monitoramento contínuo da curtose multivariada de Mardia (Mardia, 1970):
+
+$$\kappa_M = \frac{1}{N} \sum_{i=1}^{N} \left[(\vec{x}_i - \vec{\mu})^T \Sigma^{-1} (\vec{x}_i - \vec{\mu})\right]^2$$
+
+comparada com o valor esperado sob normalidade $\kappa_{esperado} = n(n+2)$ (onde $n$ é a dimensionalidade) — o agente pode substituir os estimadores de $\vec{\mu}$ e $\Sigma$ pelo **Minimum Covariance Determinant (MCD)** (Rousseeuw, 1984).
+
+O MCD estima localização e dispersão utilizando o subconjunto de $h$ observações (de $N$ totais, com $h \approx \lceil N/2 \rceil$) cuja matriz de covariância tem o menor determinante, efetivamente descartando a influência dos $N-h$ outliers mais extremos na estimação dos parâmetros basais. A implementação incremental do MCD via algoritmo FAST-MCD (Rousseeuw & Van Driessen, 1999) é computacionalmente viável para a dimensionalidade esperada do vetor de estado ($n \leq 15$).
+
+**Impacto no footprint:** O MCD incremental requer armazenamento de uma janela de amostras recentes (tipicamente 100–500 amostras) para recalcular o subconjunto ótimo, violando parcialmente o princípio de memória $O(1)$ do Welford. O trade-off é explícito: robustez estatística contra footprint previsível. A ativação do MCD é **condicional** — só ocorre quando $\kappa_M$ diverge significativamente de $\kappa_{esperado}$, indicando que a distribuição observada requer tratamento robusto. Na prática, a janela de 500 amostras com $n = 10$ variáveis ocupa $\sim$40KB de memória — negligível em qualquer contexto operacional.
+
+#### 4.6.4. Multimodalidade e Interação com Perfis Sazonais
+
+O problema de multimodalidade — a violação mais severa para $D_M$ — é parcialmente endereçado pelo mecanismo de perfis basais indexados por contexto temporal (Seção 6.6). Quando a multimodalidade é causada por alternância temporal previsível entre regimes (e.g., dia/noite, semana/fim de semana), cada segmento temporal acumula seu próprio perfil basal **unimodal**, eliminando a multimodalidade na raiz.
+
+Quando a multimodalidade não é temporalmente segregável (e.g., sistema que alterna entre modos aleatoriamente), a abordagem requer extensão para **Mixture of Gaussians** com estimação via Expectation-Maximization (EM) adaptado para streaming (Engel & Heinen, 2010). Esta extensão é documentada como direção de pesquisa futura, pois introduz complexidade computacional ($O(k \cdot n^2)$ por amostra, onde $k$ é o número de modos) e o problema de seleção de modelo (determinação de $k$).
+
+#### 4.6.5. Plano de Validação Empírica
+
+A validação experimental (documentada separadamente no plano experimental) incluirá:
+
+1. **Coleta de dados reais** de métricas de kernel em sistemas de produção (mínimo 72 horas contínuas por cenário);
+2. **Testes de normalidade multivariada**: curtose de Mardia, teste de Henze-Zirkler (Henze & Zirkler, 1990), e inspeção visual via QQ-plots multivariados;
+3. **Benchmarking comparativo** da taxa de detecção (True Positive Rate) e taxa de falsos positivos (False Positive Rate) sob:
+   - Estimação clássica (Welford, $\vec{\mu}$ e $\Sigma$ amostrais);
+   - Estimação robusta (MCD);
+   - Mahalanobis com transformação prévia (e.g., Box-Cox multivariada para redução de assimetria);
+4. **Análise de impacto no footprint computacional** de cada alternativa.
+
+**Referências adicionais para esta seção:**
+
+- Gnanadesikan, R., & Kettenring, J. R. (1972). Robust Estimates, Residuals, and Outlier Detection with Multiresponse Data. *Biometrics*, 28(1), 81–124.
+- Hubert, M., Debruyne, M., & Rousseeuw, P. J. (2018). Minimum Covariance Determinant and Extensions. *WIREs Computational Statistics*, 10(3), e1421.
+- Mardia, K. V. (1970). Measures of Multivariate Skewness and Kurtosis with Applications. *Biometrika*, 57(3), 519–530.
+- Penny, K. I. (1996). Appropriate Critical Values When Testing for a Single Multivariate Outlier by Using the Mahalanobis Distance. *Journal of the Royal Statistical Society: Series C*, 45(1), 73–81.
+- Rousseeuw, P. J. (1984). Least Median of Squares Regression. *Journal of the American Statistical Association*, 79(388), 871–880.
+- Rousseeuw, P. J., & Van Driessen, K. (1999). A Fast Algorithm for the Minimum Covariance Determinant Estimator. *Technometrics*, 41(3), 212–223.
+- Henze, N., & Zirkler, B. (1990). A Class of Invariant Consistent Tests for Multivariate Normality. *Communications in Statistics — Theory and Methods*, 19(10), 3595–3617.
+- Engel, P. M., & Heinen, M. R. (2010). Incremental Learning of Multivariate Gaussian Mixture Models. *Proceedings of the Brazilian Symposium on Artificial Intelligence (SBIA)*.
+
 ---
 
 ## 5. Arquitetura de Engenharia
@@ -265,9 +411,22 @@ O HOSA implementa **seis níveis de resposta** (0–5), cada um com ações espe
 | **4 — Contenção Severa** | $D_M > \theta_4$ ou velocidade de convergência indica esgotamento em < T segundos | Throttling agressivo. XDP bloqueia todo tráfego de entrada exceto healthcheck do orquestrador. Freeze de cgroups não-críticos. | Requer redução sustentada de $D_M$ abaixo de $\theta_3$ por período estendido. |
 | **5 — Quarentena Autônoma** | Falha de contenção nos níveis anteriores. $D_M$ em ascensão descontrolada apesar de mitigações ativas. | **Isolamento de rede**: desativação programática de interfaces de rede (exceto interface de gerência/IPMI, se presente). Processos não-essenciais congelados (SIGSTOP). Log detalhado gravado em armazenamento persistente. Nó sinaliza estado "quarentenado" no último webhook possível. | **Manual**: requer intervenção administrativa para restaurar o nó. |
 
-**Nota sobre o Nível 5 (substituição do conceito anterior de "Apoptose").** A versão anterior deste documento propunha um kernel panic intencional como mecanismo de defesa extrema. Esta abordagem foi revisada por apresentar riscos inaceitáveis de corrupção de dados (escritas parciais em disco, journals incompletos) e violação de requisitos de integridade em ambientes regulados. A arquitetura revisada substitui o kernel panic por **quarentena controlada**: o nó é isolado da rede para impedir propagação de ameaça, mas seus processos são congelados de forma ordenada — não destruídos — preservando a possibilidade de análise forense e recuperação de dados. O sistema operacional permanece ativo com funcionalidade mínima.
+### 5.4.1. Modos de Quarentena por Classe de Ambiente
 
-A decisão de quarentena é **autônoma** (não requer intervenção humana para ser *ativada*), consistente com o princípio de independência operacional. A *restauração* do nó, contudo, é manual, funcionando como um análogo do "fusível" elétrico: a proteção é automática, mas o reset exige inspeção humana.
+A quarentena autônoma (Nível 5) envolve isolamento de rede do nó comprometido. A viabilidade e a estratégia desse isolamento variam fundamentalmente conforme a classe de infraestrutura. O HOSA implementa **modos de quarentena diferenciados**, selecionados automaticamente durante a fase de Propriocepção de Hardware (Seção 5.3) ou configurados explicitamente pelo operador.
+
+| Classe de Ambiente | Detecção Automática | Estratégia de Quarentena | Mecanismo de Recovery |
+|---|---|---|---|
+| **Bare metal com IPMI/iLO/iDRAC** | Detecção de interface IPMI via `/sys/class/net/` e presença de módulos `ipmi_*` no kernel. | Desativação programática de **todas** as interfaces de rede **exceto** a interface de gerência out-of-band (IPMI/iLO/iDRAC). O nó permanece acessível via console de gerência para diagnóstico e restauração. | Manual via console IPMI. Operador inspeciona logs do HOSA, diagnostica causa raiz, restaura interfaces e reinicia serviços. |
+| **VM em cloud pública (AWS, GCP, Azure)** | Detecção via DMI/SMBIOS (`dmidecode`), presença de metadata service (169.254.169.254), e identificação do hypervisor via `/sys/hypervisor/` ou CPUID. | **Não desativa interfaces de rede.** Em vez disso: (1) XDP aplica drop total em todo tráfego de entrada e saída **exceto**: tráfego para o metadata service do cloud provider (169.254.169.254), tráfego DHCP (manutenção de lease de IP), e tráfego para o endpoint de API do orquestrador (se configurado). (2) HOSA sinaliza estado de quarentena via **mecanismo nativo do cloud provider** quando disponível: escrita de tag/label na instância via metadata service (e.g., `hosa-quarantine=true`), publicação em tópico SNS/Pub-Sub (se credenciais pré-configuradas), ou atualização de healthcheck endpoint para retornar HTTP 503 com corpo JSON detalhando o estado. (3) O orquestrador externo (Kubernetes, ASG, etc.) é responsável pela decisão de terminate/replace. | O orquestrador externo termina a instância e provisiona substituição. Se o orquestrador não atuar em tempo configurável (padrão: 5 minutos), o HOSA pode executar **self-termination** via API do cloud provider (quando credenciais IAM com permissão `ec2:TerminateInstances` ou equivalente estão disponíveis). Self-termination é **desativada por padrão** e requer ativação explícita na configuração. |
+| **Kubernetes (pod/container)** | Detecção de execução em container via presença de `/proc/1/cgroup` com namespace de cgroup, variáveis de ambiente `KUBERNETES_SERVICE_HOST`, ou presença de service account montado em `/var/run/secrets/kubernetes.io/`. | O HOSA operando como DaemonSet **não isola o nó** (não tem permissão para desativar interfaces do host). Em vez disso: (1) Aplica contenção máxima via cgroups nos pods identificados como contribuintes. (2) Atualiza o status do Node via Kubernetes API com **taint** `hosa.io/quarantine=true:NoExecute` e **condition** `HOSAQuarantine=True`, causando evacuação automática dos pods pelo scheduler. (3) Emite Event no namespace do pod afetado com tipo `Warning` e razão `HOSAQuarantine`. | Operador ou automação remove a taint após investigação. O node retorna ao pool de scheduling. |
+| **Edge/IoT com acesso físico** | Configuração explícita pelo operador (flag `environment: edge-physical`). | Desativação completa de interfaces de rede. O dispositivo opera em modo isolado até intervenção física. Logs são preservados em armazenamento local persistente (flash/eMMC). Se o dispositivo possui LED de status ou display, o HOSA sinaliza estado de quarentena visualmente. | Manual. Técnico de campo acessa o dispositivo, coleta logs, diagnostica e restaura. |
+| **Edge/IoT sem acesso físico** | Configuração explícita pelo operador (flag `environment: edge-remote`). | **Quarentena com watchdog timer.** (1) Desativação de interfaces de rede. (2) Ativação de hardware watchdog timer (via `/dev/watchdog`) com timeout configurável (padrão: 30 minutos). (3) Se nenhuma intervenção remota ocorre antes do timeout (impossível, pois a rede está desativada), o watchdog reinicia o dispositivo, que retorna ao estado pré-quarentena com flag persistente `quarantine_recovery=true`. (4) Ao reiniciar com essa flag, o HOSA entra em modo conservador (apenas logging por período configurável) para permitir diagnóstico remoto antes de retomar mitigação autônoma. | Automática via watchdog reboot, com período de observação pós-recovery. Operador remoto pode acessar durante o período de observação para diagnóstico. |
+| **Ambiente air-gapped (redes classificadas, SCADA/ICS)** | Configuração explícita pelo operador (flag `environment: airgap`). | Idêntico a bare metal, com a adição de que **toda comunicação oportunista é desativada permanentemente** (nenhum webhook, nenhuma exposição de endpoint). O HOSA opera em modo puramente endógeno. Logs são escritos exclusivamente em armazenamento local criptografado e coletados periodicamente por equipe com acesso físico autorizado. | Manual via acesso físico autorizado com procedimento de segurança definido pelo operador. |
+
+**Princípio de design: detecção automática com override manual.** O HOSA tenta detectar automaticamente a classe de ambiente e selecionar o modo de quarentena apropriado. O operador pode sobrescrever essa detecção via configuração explícita. Em caso de ambiguidade (e.g., VM em cloud privada que não responde ao metadata service padrão), o HOSA assume o modo **mais conservador** (cloud pública — não desativa interfaces), priorizando recuperabilidade sobre isolamento.
+
+**Nota sobre containers e privilégio.** Quando o HOSA opera como container (DaemonSet em Kubernetes), seu acesso a cgroups do host e interfaces de rede depende de capabilities Linux específicas (`CAP_SYS_ADMIN`, `CAP_NET_ADMIN`, `CAP_BPF`). A documentação de deploy especificará o conjunto mínimo de capabilities requeridas para cada nível de resposta, seguindo o princípio de mínimo privilégio. Níveis 0-2 requerem apenas `CAP_BPF` e acesso de leitura a `/sys/`. Níveis 3-4 requerem adicionalmente `CAP_SYS_ADMIN` para manipulação de cgroups. Nível 5 requer `CAP_NET_ADMIN` para manipulação de XDP e, no modo Kubernetes, acesso à API do cluster para aplicação de taints.
 
 ### 5.5. Habituação: Adaptação ao Novo Basal
 
@@ -297,51 +456,202 @@ O HOSA endereça estes riscos através de uma **lista de proteção** (safelist)
 
 O throttling é aplicado preferencialmente aos processos identificados como **maiores contribuintes** para a anomalia, determinados pela decomposição do vetor $\vec{x}(t)$ — os processos cujo consumo de recursos mais contribui para as dimensões onde $D_M$ diverge do basal.
 
+### 5.7. Cenário Walkthrough: Memory Leak em Microsserviço de Pagamento
+
+Esta seção apresenta um cenário end-to-end que ilustra o ciclo perceptivo-motor do HOSA em operação, contrastando-o com o comportamento de um sistema de monitoramento exógeno operando simultaneamente. Os valores numéricos são representativos e baseados em comportamento observado em sistemas de produção; a validação experimental formal é documentada separadamente.
+
+#### Contexto
+
+- **Nó:** VM `worker-node-07` em cluster Kubernetes, 8 vCPUs, 16GB RAM.
+- **Workload:** 12 pods, incluindo `payment-service-7b4f` (microsserviço de processamento de pagamentos, Java, 2GB de memória alocada via cgroup).
+- **Monitoramento exógeno:** Prometheus com scrape interval de 15 segundos, Alertmanager com regra: `container_memory_usage_bytes > 1.8GB for 1m`.
+- **HOSA:** Operando em regime de homeostase (Nível 0) há 6 horas. Perfil basal calibrado. Vetor de estado com 8 dimensões.
+
+#### Timeline
+
+**t = 0s (14:23:07.000) — Início do Memory Leak**
+
+O `payment-service-7b4f` inicia alocação de objetos não-coletados pelo GC do Java (referência circular em cache de sessões). Taxa de vazamento: ~50MB/s.
+
+Estado do sistema neste instante:
+```
+Vetor x(t):
+  cpu_total:     47%    (basal: 45% ± 8%)
+  mem_used:      61%    (basal: 58% ± 5%)
+  mem_pressure:  12%    (basal: 10% ± 4%)  [PSI some avg10]
+  io_throughput: 340 IOPS (basal: 320 ± 60 IOPS)
+  io_latency:    2.1ms  (basal: 1.9 ± 0.8ms)
+  net_rx:        1,200 req/s (basal: 1,150 ± 200 req/s)
+  net_tx:        1,180 resp/s (basal: 1,130 ± 190 resp/s)
+  runqueue:      3.2    (basal: 2.8 ± 1.5)
+
+D_M = 1.1    (θ₁ = 3.0, θ₂ = 5.0, θ₃ = 7.0, θ₄ = 9.0)
+φ = +0.3
+dD̄_M/dt ≈ 0
+Nível de Resposta: 0 (Homeostase)
+```
+
+Prometheus coletou última métrica há 8 segundos. Próximo scrape em 7 segundos.
+
+**t = 1s (14:23:08.000) — HOSA detecta desvio inicial**
+
+```
+  mem_used:      64%    (+3pp em 1s — 2σ acima do esperado para Δt=1s)
+  mem_pressure:  18%    (+6pp — transição rápida)
+
+D_M = 2.8
+φ = +0.9
+dD̄_M/dt = +1.6/s   (positiva — afastamento acelerado)
+d²D̄_M/dt² = +1.6/s² (aceleração positiva — não é desaceleração)
+
+Nível de Resposta: 0→1 (Vigilância)
+```
+
+**Ações do HOSA:**
+- Frequência de amostragem aumentada de 100ms para 10ms.
+- Log local: `[VIGILANCE] D_M=2.8 dDM/dt=+1.6 dominant_dim=mem_used(c_j=0.72) mem_pressure(c_j=0.21)`
+- Nenhuma intervenção no sistema. Nenhum webhook (não é urgente).
+
+**Prometheus:** Não coletou nenhuma métrica neste intervalo. Não tem consciência do evento.
+
+**t = 2s (14:23:09.000) — Escalação para Contenção Leve**
+
+```
+  mem_used:      68%    (+7pp acumulado)
+  mem_pressure:  29%    (PSI em ascensão rápida)
+  cpu_total:     52%    (GC do Java ativado — CPU sobe por pressão de memória)
+  io_latency:    3.8ms  (swap começando a ser utilizado — latência de I/O sobe)
+
+D_M = 4.7
+φ = +1.8
+dD̄_M/dt = +2.1/s   (acelerando)
+d²D̄_M/dt² = +0.5/s² (aceleração positiva sustentada)
+
+ρ(t) = 0.31  (correlação CPU↔memória alterada — CPU subindo por causa de GC,
+              não por carga legítima. Correlação mem↔io_latency emergindo
+              onde antes não existia → swap ativo)
+
+Nível de Resposta: 1→2 (Contenção Leve)
+```
+
+**Ações do HOSA:**
+- Decomposição dimensional: `mem_used` contribui 68% de $D_M^2$, `mem_pressure` contribui 19%, `io_latency` contribui 8%.
+- Identificação do cgroup contribuinte: `/sys/fs/cgroup/kubepods/pod-payment-service-7b4f/` é o cgroup com maior delta de `memory.current` no último segundo (+102MB).
+- **Ação de contenção:** `memory.high` do cgroup do `payment-service-7b4f` reduzido de `2G` (configuração original do pod) para `1.6G`. Isso instrui o kernel a aplicar backpressure de memória (reclaim agressivo) no container, desacelerando a taxa de alocação sem matar o processo.
+- Webhook oportunista disparado: `POST /api/v1/alerts` com severidade `warning`, payload contendo vetor de estado e contribuição dimensional.
+
+**Prometheus:** Próximo scrape em 5 segundos. Prometheus ainda exibirá as métricas do scrape anterior (t=-8s), que mostravam sistema saudável.
+
+**t = 4s (14:23:11.000) — Contenção segurando, derivada desacelerando**
+
+```
+  mem_used:      72%    (ainda subindo, mas taxa reduzida pela contenção de memory.high)
+  mem_pressure:  34%    (subindo, mas desacelerando — reclaim ativo)
+
+D_M = 5.9
+φ = +2.1
+dD̄_M/dt = +1.2/s   (DESACELERANDO — de +2.1/s para +1.2/s)
+d²D̄_M/dt² = -0.45/s² (NEGATIVA — a contenção está funcionando)
+
+Nível de Resposta: 2 (mantém Contenção Leve — d²D̄_M/dt² negativa indica que
+                       a mitigação está sendo eficaz. Não escalar desnecessariamente.)
+```
+
+**Ações do HOSA:**
+- Log: `[CONTAINMENT-HOLDING] D_M=5.9 dDM/dt=+1.2(decreasing) d2DM/dt2=-0.45 action=memory.high_effective target=payment-service-7b4f`
+- Mantém `memory.high` em 1.6G. Monitora se a desaceleração continua.
+- Processos do `kubelet`, `containerd` e outros pods **não são afetados** — estão na safelist.
+
+**Prometheus:** Executa scrape neste instante (t=4s). Coleta `container_memory_usage_bytes{pod="payment-service-7b4f"} = 1.47GB`. Armazena no TSDB. Regra de alerta: "container_memory_usage > 1.8GB for 1m" — **condição não satisfeita** (memória está a 1.47GB graças à contenção do HOSA, e a condição `for 1m` exige sustentação por 60 segundos).
+
+**t = 8s (14:23:15.000) — Estabilização pela contenção**
+
+```
+  mem_used:      74%    (estabilizando — reclaim igualando taxa de alocação)
+  mem_pressure:  36%    (estável)
+  cpu_total:     58%    (GC do Java trabalhando continuamente)
+
+D_M = 6.2
+φ = +2.2
+dD̄_M/dt = +0.15/s   (quase zero — sistema estabilizando no novo patamar)
+d²D̄_M/dt² ≈ 0        (aceleração nula — nem piorando nem melhorando)
+
+Nível de Resposta: 2 (mantém)
+```
+
+**O HOSA comprou tempo.** O sistema está contido em um patamar degradado mas funcional. O `payment-service` está lento (backpressure de memória causa latência maior), mas não crashou. Transações em andamento não foram corrompidas. Nenhum processo foi morto.
+
+**Prometheus:** Segundo scrape desde o início do leak. Coleta `container_memory_usage_bytes = 1.52GB`. Condição de alerta: 1.52GB < 1.8GB, e `for 1m` não decorrido. **Nenhum alerta.**
+
+**t = 19s (14:23:26.000) — Prometheus coleta terceira amostra**
+
+Coleta `container_memory_usage_bytes = 1.55GB`. Condição de alerta: memória abaixo do threshold. **Nenhum alerta.** A contenção do HOSA está impedindo que a métrica coletada pelo Prometheus atinja o limiar configurado.
+
+**t = 35s (14:23:42.000) — Operador recebe webhook do HOSA**
+
+O operador humano ou o sistema de automação recebe o webhook enviado pelo HOSA no t=2s (a entrega pode ter latência variável dependendo da infraestrutura de webhooks). O payload contém:
+
+```json
+{
+  "severity": "warning",
+  "node": "worker-node-07",
+  "timestamp": "2024-01-15T14:23:09.000Z",
+  "hosa_level": 2,
+  "d_m": 4.7,
+  "d_m_derivative": 2.1,
+  "dominant_dimension": "mem_used",
+  "dominant_contribution_pct": 68,
+  "suspected_cgroup": "/kubepods/pod-payment-service-7b4f",
+  "action_taken": "memory.high reduced to 1.6G",
+  "action_status": "effective (d2DM/dt2 < 0)"
+}
+```
+
+O operador pode agora tomar ação informada: investigar o memory leak no `payment-service`, fazer rollback do deploy, ou escalar horizontalmente. A informação chegou com **contexto dimensional** (qual recurso, qual processo, qual ação foi tomada, se está funcionando) — não como um alerta binário genérico.
+
+**t = 60s (14:24:07.000) — Cenário contrafactual sem HOSA**
+
+Se o HOSA não estivesse operando:
+- A 50MB/s, o container teria alocado ~3GB em 60 segundos, excedendo o limit de 2GB do cgroup.
+- O kernel teria acionado o OOM-Killer contra o processo Java do `payment-service` em t ≈ 40s.
+- Todas as transações de pagamento em andamento teriam sido abortadas sem graceful shutdown.
+- O kubelet teria reiniciado o pod (CrashLoopBackOff), mas o memory leak persistiria, causando ciclos de crash a cada ~40 segundos.
+- O Prometheus finalmente emitiria alerta (condição `for 1m` satisfeita) em t ≈ 100s — **60 segundos após o primeiro crash.**
+- Clientes teriam experimentado erros 502/504 em transações financeiras durante todo esse período.
+
+#### Síntese Temporal
+
+```
+t=0s      t=1s      t=2s      t=4s       t=8s       t=15s      t=40s     t=100s
+ │         │         │         │          │           │          │          │
+ │ Leak    │ HOSA    │ HOSA    │ HOSA     │ HOSA     │Prometheus│ SEM HOSA:│Prometheus
+ │ inicia  │ detecta │ contém  │ confirma │estabiliza│1° scrape │ OOM-Kill │ alerta
+ │         │ (N1)    │ (N2)    │ eficácia │ sistema  │ pós-leak │ (crash)  │ (tarde)
+ │         │         │         │          │          │          │          │
+ ├─────────┴─────────┤         │          │          │          │          │
+ │  INTERVALO LETAL  │         │          │          │          │          │
+ │  (2 segundos)     │         │          │          │          │          │
+ │  HOSA atuou aqui  │         │          │          │          │          │
+ └───────────────────┘         │          │          │          │          │
+                               │          │          │          │          │
+                    ┌──────────┴──────────┴──────────┤          │          │
+                    │  HOSA mantém contenção ativa   │          │          │
+                    │  Sistema degradado mas VIVO    │          │          │
+                    └────────────────────────────────┘          │          │
+                                                                │          │
+                                                      ┌─────────┴──────────┤
+                                                      │ SEM HOSA: cascata  │
+                                                      │ OOM → crash → 502  │
+                                                      │ → CrashLoopBackOff │
+                                                      │ → alerta tardio    │
+                                                      └────────────────────┘
+```
+
+O HOSA transformou um cenário de **crash destrutivo com perda de transações** em um cenário de **degradação controlada com preservação de funcionalidade**. O tempo de detecção foi de 1 segundo (vs. >60 segundos do modelo exógeno). A mitigação preservou a integridade das transações em andamento. O operador recebeu informação acionável com contexto dimensional completo.
+
+Este é o Intervalo Letal em operação — e a demonstração de por que a capacidade de decisão imediata deve residir no próprio nó.
+
 ---
-
-## 6. Taxonomia de Regimes Operacionais e Classificação Comportamental do HOSA
-
-### 6.1. O Problema da Classificação de Demanda
-
-A eficácia de um sistema de detecção de anomalias depende fundamentalmente da sua capacidade de **distinguir entre variação legítima e deterioração patológica**. Um detector que trata todo desvio como ameaça gera fadiga operacional por falsos positivos. Um detector tolerante demais permite que ataques sofisticados operem abaixo do limiar de percepção.
-
-O desafio é agravado pelo fato de que, do ponto de vista estritamente métrico, cenários radicalmente distintos podem produzir assinaturas superficialmente semelhantes. CPU a 85% pode significar:
-
-- Um dia normal de operação para um servidor de renderização de vídeo;
-- Um pico sazonal previsível de Black Friday em um e-commerce;
-- Os primeiros milissegundos de um ataque DDoS volumétrico;
-- Um cryptominer silencioso consumindo ciclos ociosos.
-
-A métrica isolada é idêntica. O que diferencia esses cenários é a **estrutura multivariável do estresse** — como as variáveis se correlacionam entre si — e a **dinâmica temporal** — como essa correlação evolui ao longo do tempo. É precisamente essa distinção que a Distância de Mahalanobis e suas derivadas permitem capturar.
-
-Esta seção formaliza uma **taxonomia de regimes operacionais** que o HOSA deve identificar e classificar, detalhando para cada regime: sua definição operacional, sua assinatura matemática no espaço de Mahalanobis, o comportamento esperado do HOSA, e a interação com o mecanismo de habituação.
-
----
-
-### 6.2. Regime 0 — Demanda Basal (Homeostase Operacional)
-
-**Definição:** O estado estacionário normal do nó sob sua carga de trabalho típica. As variáveis de recurso flutuam dentro de uma faixa previsível, refletindo a atividade ordinária das aplicações hospedadas.
-
-**Assinatura matemática:**
-
-| Indicador | Comportamento |
-|---|---|
-| $D_M(t)$ | Baixo e estável, flutuando próximo à origem do espaço normalizado. Tipicamente $D_M < \theta_1$. |
-| $\frac{d\bar{D}_M}{dt}$ | Oscila em torno de zero. Sem tendência direcional sustentada. |
-| $\frac{d^2\bar{D}_M}{dt^2}$ | Ruído estacionário de baixa amplitude. |
-| Matriz $\Sigma$ | Estável. As correlações entre variáveis são consistentes ao longo do tempo. |
-
-**Comportamento do HOSA:**
-
-- **Nível de Resposta:** 0 (Homeostase).
-- **Filtro Talâmico ativo:** O HOSA suprime o envio de telemetria detalhada para sistemas externos. Apenas um heartbeat mínimo é emitido periodicamente, confirmando que o nó está vivo e em homeostase. Isso reduz drasticamente o custo de ingestão de dados (FinOps).
-- **Atualização basal:** $\vec{\mu}$ e $\Sigma$ continuam sendo atualizados incrementalmente via Welford, refinando continuamente o perfil basal.
-
-**Interação com habituação:** Este é o **regime de referência**. Todas as detecções de anomalia são medidas como desvios em relação a este estado. A qualidade da detecção depende diretamente da representatividade estatística da fase de warm-up e da acumulação contínua neste regime.
-
----
-
-
 
 ## 6. Taxonomia de Regimes Operacionais e Classificação Comportamental do HOSA
 
@@ -377,7 +687,7 @@ O Regime 0 (homeostase) constitui o ponto de referência central. Desvios negati
 
 ```
     Sub-demanda                    Sobre-demanda / Anomalia
-    ◄──────────────────────┤├──────────────────────────────►
+    ◄──────────────────────┤├───────────────────────────────────►
 
     −3      −2      −1      0      +1     +2     +3     +4     +5
     │       │       │       │       │      │      │      │      │
@@ -598,7 +908,7 @@ Um $IPE$ próximo de 1 indica que, mesmo nos períodos de maior atividade, o nó
 | **Sinalização urgente** | Webhook de prioridade alta para orquestrador e equipe operacional: "Nó X reporta atividade significativamente abaixo do esperado para o contexto temporal. Investigação recomendada." |
 | **Correlação com ICP** | Se o silêncio anômalo é acompanhado de $ICP$ elevado (aumento de conexões de saída, processos anômalos), o cenário é reclassificado como potencial comprometimento (Regime +5 — Viral), com escalação correspondente. |
 
-**O discriminante crítico entre Regime −1 e Regime −3:** A coerência temporal. Se o sistema opera com perfis basais sazonais (Seção 6.7), o HOSA compara a atividade observada com o perfil esperado para aquela janela temporal específica. Uma queda de atividade às 03:00 é coerente com o perfil de madrugada (Regime −1). Uma queda de atividade às 10:00 de uma terça-feira, quando o perfil prevê pico, é **incoerente** (Regime −3).
+**O discriminante crítico entre Regime −1 e Regime −3:** A coerência temporal. Se o sistema opera com perfis basais sazonais (Seção 6.6), o HOSA compara a atividade observada com o perfil esperado para aquela janela temporal específica. Uma queda de atividade às 03:00 é coerente com o perfil de madrugada (Regime −1). Uma queda de atividade às 10:00 de uma terça-feira, quando o perfil prevê pico, é **incoerente** (Regime −3).
 
 Quando perfis sazonais ainda não estão calibrados (primeiras semanas de operação), o HOSA utiliza o critério de **velocidade da transição**: uma queda abrupta ($|d\phi/dt|$ alto) é classificada provisoriamente como Regime −3, enquanto uma queda gradual é tratada como potencialmente legítima.
 
@@ -882,6 +1192,29 @@ onde:
 
 O ICP é incorporado como dimensão suplementar ao vetor de estado, influenciando o cálculo de $D_M$ e, crucialmente, afetando a decisão entre **contenção** (Nível 3-4, preserva conectividade) e **quarentena** (Nível 5, isola o nó da rede).
 
+**Estratégia de Calibração dos Pesos $w_i$:**
+
+A combinação linear ponderada do ICP requer justificativa para a escolha dos pesos $w_1, w_2, w_3, w_4$. O HOSA adota uma estratégia de calibração em três estágios:
+
+**Estágio 1 — Inicialização Uniforme.** Na ausência de dados empíricos, os pesos são inicializados uniformemente: $w_i = \frac{1}{4}$ para $i \in \{1, 2, 3, 4\}$. Esta escolha expressa a premissa agnóstica de que, a priori, nenhum indicador parcial é mais informativo que os demais para a detecção de comportamento de propagação. A uniformidade é uma decisão conservadora que evita viés não-fundamentado.
+
+**Estágio 2 — Calibração por Análise de Sensibilidade.** Durante a fase experimental, o HOSA é submetido a cenários de ataque controlados com ground truth conhecido (propagação confirmada vs. ausente). Para cada cenário $j$, o vetor de indicadores $[\hat{C}_{out}^{(j)}, \hat{H}_{dest}^{(j)}, \hat{F}_{anom}^{(j)}, \hat{\rho}^{(j)}]$ é registrado juntamente com o rótulo binário $y^{(j)} \in \{0, 1\}$ (propagação ausente/presente).
+
+Os pesos são então calibrados via **maximização da AUC-ROC** (Area Under the Receiver Operating Characteristic Curve) sobre o conjunto de cenários:
+
+$$\vec{w}^* = \arg\max_{\vec{w}} \text{AUC-ROC}\left(\{ICP^{(j)}(\vec{w}), y^{(j)}\}_{j=1}^{M}\right)$$
+
+sujeito às restrições $w_i \geq 0$ e $\sum_i w_i = 1$.
+
+A otimização é realizada via grid search sobre o simplex de pesos (com granularidade de 0.05, resultando em $\binom{23}{3} = 1.771$ combinações para 4 pesos — computacionalmente trivial) ou, para maior precisão, via otimização de Nelder-Mead sobre o simplex.
+
+**Estágio 3 — Validação Cruzada e Publicação dos Pesos.** Os pesos calibrados são validados via leave-one-out cross-validation sobre os cenários experimentais. Os valores finais de $\vec{w}^*$, juntamente com o intervalo de confiança de cada peso e a AUC-ROC resultante, são publicados como parâmetros de referência da implementação.
+
+**Pesos como configuração, não como constante:** Os pesos são expostos como parâmetros de configuração do agente, permitindo que operadores em ambientes específicos (e.g., redes industriais com perfil de tráfego radicalmente diferente de datacenters) recalibrem os pesos com base em seus próprios dados. Os valores padrão ($\vec{w}^*$ calibrados na fase experimental) são adequados para ambientes genéricos.
+
+**Direção futura — pesos adaptativos:** Na Fase 4+ (Inteligência de Enxame), os pesos podem ser atualizados via aprendizado federado entre instâncias HOSA, convergindo para valores ótimos para cada classe de ambiente sem compartilhamento de dados sensíveis.
+
+
 **Comportamento do HOSA:**
 
 - **ICP baixo + $D_M$ alto:** Anomalia não-viral (Regime +4). HOSA aplica contenção local sem isolamento de rede.
@@ -1150,7 +1483,119 @@ A honestidade intelectual exige a documentação explícita das limitações con
 
 ---
 
-## 10. Contribuições Esperadas
+### 10. Perguntas Antecipadas e Respostas
+
+Esta seção antecipa e endereça objeções técnicas previsíveis à arquitetura do HOSA, contribuindo para a completude argumentativa do documento.
+
+---
+
+**P1: "Por que não usar Machine Learning / Deep Learning em vez da Distância de Mahalanobis? Autoencoders, LSTMs e Isolation Forests são mais sofisticados para detecção de anomalias."**
+
+A escolha da Distância de Mahalanobis não é por desconhecimento de técnicas mais complexas — é por **adequação aos requisitos operacionais** do agente.
+
+O HOSA deve operar em qualquer hardware que execute Linux ≥ 5.8, incluindo dispositivos IoT com 512MB de RAM e sem GPU. Autoencoders e LSTMs exigem: (a) infraestrutura de treinamento (dados rotulados ou procedimento de treinamento não-supervisionado com convergência garantida); (b) runtime de inferência com footprint significativo (TensorFlow Lite ou ONNX Runtime adicionam 10–50MB ao binário e consomem CPU proporcional à complexidade do modelo); (c) janelas de dados armazenadas para inferência (LSTMs processam sequências, requerendo buffers de histórico).
+
+A Distância de Mahalanobis com Welford incremental oferece: (a) calibração online sem fase de treinamento separada; (b) footprint de memória $O(n^2)$ fixo (para $n \leq 15$, isso é < 2KB); (c) cálculo em tempo constante por amostra ($O(n^2)$, ~microsegundos para $n = 10$).
+
+A questão não é "qual técnica é mais sofisticada?" — é "qual técnica detecta anomalias com latência sub-milissegundo, memória constante, sem GPU, em um Raspberry Pi?" A resposta a essa pergunta exclui deep learning e favorece estatística clássica robusta.
+
+Adicionalmente, a Distância de Mahalanobis produz resultado **interpretável**: o operador pode inspecionar quais dimensões contribuem para o desvio ($c_j$), entender a decisão, e auditar o comportamento do agente. Modelos de deep learning são opacos por construção, dificultando auditabilidade — um requisito não-negociável para um agente que executa mitigação autônoma.
+
+---
+
+**P2: "Isso não é apenas um HIDS (Host Intrusion Detection System) com nome diferente?"**
+
+Não. A distinção é estrutural, não cosmética.
+
+| Dimensão | HIDS (e.g., OSSEC, Wazuh) | HOSA |
+|---|---|---|
+| **Foco primário** | Segurança — detecção de intrusão | Sobrevivência operacional — manutenção da homeostase do nó |
+| **Modelo de detecção** | Baseado em regras e assinaturas de ataques conhecidos (model of "known bad") | Baseado em desvio do perfil basal (model of "known good") |
+| **Variáveis monitoradas** | Logs, integridade de arquivos, syscalls suspeitas | Métricas de recursos (CPU, memória, I/O, rede) e suas correlações multivariáveis |
+| **Ação** | Alerta. Bloqueio pontual (e.g., fail2ban). | Mitigação graduada autônoma: throttling de cgroups, load shedding via XDP, quarentena |
+| **Detecção de sub-demanda** | Não — HIDS não se interessa por servidores ociosos | Sim — os Regimes −1, −2, −3 detectam ociosidade estrutural e silêncio anômalo |
+| **Dependência de rede** | Tipicamente requer servidor central (Wazuh Manager, OSSEC Server) | Autonomia total para função primária |
+
+O HOSA pode detectar *consequências* de ataques (deformação da covariância, Regime +3), mas não é projetado para substituir ferramentas de segurança especializadas. Ele complementa HIDS da mesma forma que complementa Prometheus: operando em uma camada diferente (saúde de recurso vs. segurança), em um horizonte temporal diferente (milissegundos vs. minutos), com um objetivo diferente (manter o nó vivo vs. identificar o atacante).
+
+---
+
+**P3: "Por que não contribuir com detecção multivariável para o `systemd-oomd` em vez de criar um agente completamente novo?"**
+
+A arquitetura do `systemd-oomd` é fundamentalmente incompatível com o modelo proposto pelo HOSA, por três razões estruturais:
+
+1. **Escopo de monitoramento.** `systemd-oomd` monitora exclusivamente **pressão de memória** (PSI memory). O HOSA monitora $n$ variáveis correlacionadas (CPU, memória, I/O, rede, scheduler). Adicionar multivariabilidade ao `oomd` significaria transformá-lo em algo que ele não foi projetado para ser — um monitor de saúde sistêmica, não um daemon de proteção contra OOM.
+
+2. **Modelo de ação.** `systemd-oomd` tem uma ação: matar o cgroup inteiro. O HOSA implementa 6 níveis de resposta graduada, incluindo throttling seletivo, load shedding parcial e quarentena. Integrar respostas graduadas ao `oomd` exigiria reescrever sua premissa arquitetural (de "proteção binária" para "controle adaptativo").
+
+3. **Acoplamento a systemd.** `systemd-oomd` é um componente do ecossistema systemd, com dependências do framework de serviços do systemd. O HOSA é projetado como agente autônomo sem dependência de init system específico, operando em qualquer ambiente Linux (incluindo containers com init minimal e sistemas embarcados sem systemd).
+
+Contribuir multivariabilidade ao `oomd` produziria uma ferramenta melhor de proteção contra OOM. Mas o HOSA não é uma ferramenta de proteção contra OOM — é um agente de **homeostase sistêmica**. O escopo é categoricamente mais amplo.
+
+---
+
+**P4: "O agente de resiliência pode se tornar a causa do problema? O que impede o HOSA de causar um crash?"**
+
+Esta é uma preocupação legítima e central ao design. O HOSA endereça-a através de múltiplos mecanismos:
+
+1. **Footprint controlado e auto-limitado.** O próprio HOSA opera dentro de um cgroup v2 dedicado com limites rígidos de CPU e memória (`memory.max`, `cpu.max`). Se o agente exceder seus próprios limites, o kernel o contém antes que afete o sistema. O HOSA pratica o que prega.
+
+2. **Safelist que inclui a si mesmo.** O HOSA é o primeiro item na safelist de processos protegidos contra throttling. Adicionalmente, processos do kernel e do orquestrador (kubelet, containerd) são protegidos por padrão.
+
+3. **Princípio de mitigação reversível.** Os Níveis 0-4 de resposta são automaticamente reversíveis. Nenhuma ação destrutiva (kill de processo, desativação de interface) é executada abaixo do Nível 5. E o Nível 5 é projetado com modos de quarentena por ambiente (Seção 5.4.1) que preservam recuperabilidade.
+
+4. **Histerese na escalação.** A transição entre níveis requer sustentação das condições de ativação por períodos mínimos, prevenindo oscilação (flapping) entre estados. O HOSA não escala de Nível 0 para Nível 4 em um único ciclo.
+
+5. **Modo dry-run.** O agente pode ser executado em modo de observação pura (logging e cálculo de decisões sem execução de ações), permitindo validação da qualidade das decisões antes de habilitar a atuação.
+
+6. **Compilação determinística.** O binário é compilado estaticamente sem dependências dinâmicas. Não há risco de falha por biblioteca compartilhada ausente ou incompatível.
+
+Dito isso, a **eliminação total do risco** é impossível para qualquer software que executa com privilégio em kernel space. Bugs no código eBPF podem causar rejeição pelo verificador (fail-safe: o programa eBPF simplesmente não carrega). Bugs no user space podem causar decisões incorretas. A mitigação é: testes extensivos, modo dry-run, e o fato de que um agente que erra uma decisão de throttling (efeito: latência temporária) é categoricamente menos destrutivo que a ausência total de mitigação (efeito: OOM-Kill, crash, perda de dados).
+
+---
+
+**P5: "Qual a diferença entre o HOSA e projetos como o Meta FBAR (Facebook Auto-Remediation)?"**
+
+O FBAR (Tang et al., 2020) é uma plataforma de remediação automatizada que opera em escala de datacenter. Suas diferenças estruturais em relação ao HOSA são:
+
+| Dimensão | FBAR | HOSA |
+|---|---|---|
+| **Arquitetura** | Centralizada. Decisões de remediação são tomadas por servidores centrais com visão global do cluster. | Distribuída/local. Cada nó decide autonomamente. |
+| **Dependência de rede** | Total. FBAR requer comunicação contínua com a infraestrutura de observabilidade do Meta. | Nenhuma para função primária. |
+| **Latência de decisão** | Segundos a minutos (envolve coleta → análise central → decisão → despacho de ação). | Milissegundos (ciclo completo local). |
+| **Escopo de ação** | Amplo: pode drenar nós, reiniciar serviços, redirecionar tráfego, escalar clusters. | Restrito ao nó local: throttling, load shedding, quarentena. |
+| **Disponibilidade** | Proprietário (infraestrutura interna do Meta). | Open-source, portável para qualquer Linux ≥ 5.8. |
+| **Adequação a Edge/IoT** | Nenhuma (projetado para datacenters hiperescala). | Projetado para operar em qualquer ambiente, incluindo dispositivos com conectividade intermitente. |
+
+O FBAR é a resposta do Meta para remediação em escala — um orquestrador inteligente de ações de infraestrutura. O HOSA é um reflexo local de sobrevivência. São complementares: em um datacenter equipado com FBAR e HOSA, o HOSA estabilizaria o nó nos milissegundos iniciais enquanto o FBAR delibera e executa a remediação sistêmica.
+
+---
+
+**P6: "A Distância de Mahalanobis é uma técnica de 1936. Não é obsoleta?"**
+
+A álgebra linear e o cálculo diferencial são do século XVIII. Continuamos usando-os porque são corretos.
+
+A Distância de Mahalanobis permanece a métrica padrão para detecção de outliers multivariados em estatística industrial (controle de qualidade), diagnóstico médico (detecção de anomalias em sinais fisiológicos), e engenharia aeroespacial (monitoramento de saúde estrutural). A razão é que suas propriedades — sensibilidade a correlação, interpretabilidade, e custo computacional previsível — não foram superadas por técnicas mais recentes nos cenários onde essas propriedades são requisitos.
+
+O HOSA não aplica Mahalanobis ingenuamente. Ele a estende com: (a) atualização incremental via Welford (footprint constante); (b) análise de derivadas temporais (sensibilidade à dinâmica, não apenas ao estado); (c) regularização para robustez numérica; (d) métricas suplementares para classificação de regime (deformação de covariância, entropia de syscalls, ICP). A Mahalanobis é o **fundamento**, não a totalidade do sistema de detecção.
+
+---
+
+**P7: "Como o HOSA se comporta em sistemas com carga altamente variável (e.g., serverless, funções Lambda, workloads batch esporádicos)?"**
+
+Workloads altamente variáveis representam um desafio legítimo para qualquer detector baseado em perfil basal, e o HOSA endereça-o em camadas:
+
+1. **Perfis sazonais (Seção 6.6):** Se a variabilidade é temporalmente previsível (batch jobs em horários fixos, picos sazonais), os perfis indexados por janela temporal capturam a variabilidade legítima.
+
+2. **Habituação (Seção 5.5):** Se a variabilidade é uma mudança permanente de patamar, o mecanismo de habituação recalibra o basal.
+
+3. **Tolerância da derivada:** O HOSA escala respostas com base na **aceleração** do desvio, não apenas na magnitude. Um pico rápido que se estabiliza (como a ativação de um job batch) produz derivada transitoriamente alta seguida de estabilização — o HOSA pode atingir brevemente Nível 1 (Vigilância) durante o transitório, mas não escalará para contenção se a aceleração cessar.
+
+4. **Cenário genuinamente problemático:** Workloads que variam **aleatoriamente** em magnitude e timing, sem padrão temporal, sem estabilização, e sem correlação previsível entre variáveis. Para estes cenários, a premissa fundamental de "perfil basal" é fraca, e a eficácia do HOSA é reduzida. A documentação de limitações (Seção 9) reconhece este cenário. A investigação de modelos de detecção para workloads não-estacionários sem perfil basal é um tema de pesquisa futura.
+
+---
+
+## 11. Contribuições Esperadas
 
 Este trabalho propõe as seguintes contribuições ao estado da arte:
 
@@ -1166,7 +1611,9 @@ Este trabalho propõe as seguintes contribuições ao estado da arte:
 
 ---
 
-## 11. Referências Bibliográficas
+## 12. Referências Bibliográficas
+
+Aggarwal, C. C. (2017). *Outlier Analysis* (2nd ed.). Springer.
 
 Bear, M. F., Connors, B. W., & Paradiso, M. A. (2015). *Neuroscience: Exploring the Brain* (4th ed.). Wolters Kluwer.
 
@@ -1176,17 +1623,27 @@ Brewer, E. A. (2000). Towards robust distributed systems. *Proceedings of the 19
 
 Burns, B., Grant, B., Oppenheimer, D., Brewer, E., & Wilkes, J. (2016). Borg, Omega, and Kubernetes. *ACM Queue*, 14(1), 70–93.
 
+Chandola, V., Banerjee, A., & Kumar, V. (2009). Anomaly Detection: A Survey. *ACM Computing Surveys*, 41(3), Article 15.
+
 Dwork, C., & Roth, A. (2014). The Algorithmic Foundations of Differential Privacy. *Foundations and Trends in Theoretical Computer Science*, 9(3–4), 211–407.
 
+Engel, P. M., & Heinen, M. R. (2010). Incremental Learning of Multivariate Gaussian Mixture Models. *Proceedings of the Brazilian Symposium on Artificial Intelligence (SBIA)*.
+
 Forrest, S., Hofmeyr, S. A., & Somayaji, A. (1997). Computer immunology. *Communications of the ACM*, 40(10), 88–96.
+
+Gnanadesikan, R., & Kettenring, J. R. (1972). Robust Estimates, Residuals, and Outlier Detection with Multiresponse Data. *Biometrics*, 28(1), 81–124.
 
 Gregg, B. (2019). *BPF Performance Tools: Linux System and Application Observability*. Addison-Wesley Professional.
 
 Hellerstein, J. L., Diao, Y., Parekh, S., & Tilbury, D. M. (2004). *Feedback Control of Computing Systems*. John Wiley & Sons.
 
+Henze, N., & Zirkler, B. (1990). A Class of Invariant Consistent Tests for Multivariate Normality. *Communications in Statistics — Theory and Methods*, 19(10), 3595–3617.
+
 Heo, T. (2015). Control Group v2. *Linux Kernel Documentation*. https://www.kernel.org/doc/Documentation/cgroup-v2.txt
 
 Horn, P. (2001). Autonomic Computing: IBM's Perspective on the State of Information Technology. *IBM Corporation*.
+
+Hubert, M., Debruyne, M., & Rousseeuw, P. J. (2018). Minimum Covariance Determinant and Extensions. *WIREs Computational Statistics*, 10(3), e1421.
 
 Lamport, L. (1998). The Part-Time Parliament. *ACM Transactions on Computer Systems*, 16(2), 133–169.
 
@@ -1194,14 +1651,30 @@ Li, T., Sahu, A. K., Talwalkar, A., & Smith, V. (2020). Federated Learning: Chal
 
 Mahalanobis, P. C. (1936). On the generalized distance in statistics. *Proceedings of the National Institute of Sciences of India*, 2(1), 49–55.
 
-Ongaro, D., & Ousterhout, J. (2014). In Search of an Understandable Consensus Algorithm. *USENIX Annual Technical Conference (ATC)*.
+Mardia, K. V. (1970). Measures of Multivariate Skewness and Kurtosis with Applications. *Biometrika*, 57(3), 519–530.
+
+Ongaro, D., & Ousterhout, J. (2014). In Search of an Understandable Consensus Algorithm. *Proceedings of the USENIX Annual Technical Conference (ATC)*.
+
+Penny, K. I. (1996). Appropriate Critical Values When Testing for a Single Multivariate Outlier by Using the Mahalanobis Distance. *Journal of the Royal Statistical Society: Series C*, 45(1), 73–81.
+
+Poettering, L. (2020). systemd-oomd: A userspace out-of-memory (OOM) killer. *systemd Documentation*. https://www.freedesktop.org/software/systemd/man/systemd-oomd.service.html
+
+Rousseeuw, P. J. (1984). Least Median of Squares Regression. *Journal of the American Statistical Association*, 79(388), 871–880.
+
+Rousseeuw, P. J., & Van Driessen, K. (1999). A Fast Algorithm for the Minimum Covariance Determinant Estimator. *Technometrics*, 41(3), 212–223.
+
+Scholz, D., Raumer, D., Emmerich, P., Kurber, A., Lessman, K., & Carle, G. (2018). Performance Implications of Packet Filtering with Linux eBPF. *Proceedings of the IEEE/IFIP Network Operations and Management Symposium (NOMS)*.
+
+Sysdig. (2016). Falco: Cloud-Native Runtime Security. *Sysdig Open Source*. https://falco.org/
 
 Tang, C., et al. (2020). FBAR: Facebook's Automated Remediation System. *Proceedings of the ACM Symposium on Cloud Computing (SoCC)*.
 
-Weiner, J. (2018). PSI - Pressure Stall Information. *Linux Kernel Documentation*. https://www.kernel.org/doc/html/latest/accounting/psi.html
+Vieira, M. A., Castanho, M. S., Pacífico, R. D. G., Santos, E. R. S., Júnior, E. P. M. C., & Vieira, L. F. M. (2020). Fast Packet Processing with eBPF and XDP: Concepts, Code, Challenges, and Applications. *ACM Computing Surveys*, 53(1), Article 16.
+
+Weiner, J. (2018). PSI — Pressure Stall Information. *Linux Kernel Documentation*. https://www.kernel.org/doc/html/latest/accounting/psi.html
 
 Welford, B. P. (1962). Note on a Method for Calculating Corrected Sums of Squares and Products. *Technometrics*, 4(3), 419–420.
 
 ---
 
-*Fim do Whitepaper — Versão 2.0*
+*Fim do Whitepaper — Versão 2.1*

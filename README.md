@@ -257,6 +257,12 @@ hosa/
 ├── docs/
 │   ├── architecture.md        # Deep dive into the bio-inspired architecture
 │   └── math_model.md          # Full mathematical formulation
+├── docs-site/
+│   ├── css/
+│   │   └── style.css          # Main style file for docs site
+│   ├── pt_br/
+│   │   └── index.html         # Main file homepage (BR)
+│   └── index.html             # Main file homepage (EN)
 ├── go.mod
 ├── go.sum
 └── Makefile                   # make build compiles eBPF C + Go in one step

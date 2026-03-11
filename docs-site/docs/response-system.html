@@ -1,0 +1,1477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Response System — HOSA Documentation</title>
+  <meta name="description" content="Graduated response levels (0–5), actuation mechanisms (cgroups v2, XDP), quarantine modes, selectivity policy, hysteresis, the Thalamic Filter, and decision observability." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/docs.css" />
+</head>
+<body>
+
+  <!-- ======================== NAVIGATION ======================== -->
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="container">
+      <a href="/" class="nav-brand">
+        <span class="brand-mark">H</span>
+        HOSA
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="/">Overview</a></li>
+        <li><a href="/#motivation">Motivation</a></li>
+        <li><a href="/#architecture">Architecture</a></li>
+        <li class="active"><a href="/docs/">Documentation</a></li>
+      </ul>
+      <div class="nav-right">
+        <div class="lang-switch">
+          <a href="/docs/response-system.html" class="active">EN</a>
+          <a href="/ptBr/docs/response-system.html">PT</a>
+        </div>
+        <a href="https://github.com/bricio-sr/hosa" class="nav-github" aria-label="GitHub Repository" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ======================== DOC HEADER ======================== -->
+  <header class="doc-header">
+    <div class="container container-narrow">
+      <nav class="doc-breadcrumb" aria-label="Breadcrumb">
+        <a href="/">HOSA</a>
+        <span class="bc-sep">/</span>
+        <a href="/docs/">Documentation</a>
+        <span class="bc-sep">/</span>
+        <span class="bc-current">Response System</span>
+      </nav>
+      <div class="doc-title-block">
+        <span class="doc-section-number">§4</span>
+        <h1>Response System</h1>
+      </div>
+      <p class="doc-subtitle">
+        Graduated response levels (0–5), actuation via cgroups v2 and XDP,
+        quarantine modes by environment class, selectivity policy,
+        hysteresis, the Thalamic Filter, and decision audit trail.
+      </p>
+      <div class="doc-meta">
+        <span>Based on Whitepaper v2.1 — Sections 5.4–5.7</span>
+        <span class="doc-meta-sep">·</span>
+        <span>~30 min read</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================== DOC BODY ======================== -->
+  <main class="doc-main">
+    <div class="container container-narrow">
+
+      <!-- Table of Contents -->
+      <aside class="doc-toc">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#design-philosophy">Design Philosophy — The Reflex Arc</a></li>
+          <li><a href="#levels-overview">Response Levels Overview</a></li>
+          <li><a href="#level-0">Level 0 — Homeostasis</a>
+            <ol>
+              <li><a href="#thalamic-filter">The Thalamic Filter</a></li>
+            </ol>
+          </li>
+          <li><a href="#level-1">Level 1 — Vigilance</a></li>
+          <li><a href="#level-2">Level 2 — Soft Containment</a></li>
+          <li><a href="#level-3">Level 3 — Active Containment</a>
+            <ol>
+              <li><a href="#cgroups-actuation">Actuation via cgroups v2</a></li>
+              <li><a href="#xdp-load-shedding">Load Shedding via XDP</a></li>
+            </ol>
+          </li>
+          <li><a href="#level-4">Level 4 — Severe Containment</a></li>
+          <li><a href="#level-5">Level 5 — Autonomous Quarantine</a></li>
+          <li><a href="#quarantine-modes">Quarantine Modes by Environment Class</a>
+            <ol>
+              <li><a href="#bare-metal">Bare Metal with IPMI/iLO/iDRAC</a></li>
+              <li><a href="#cloud-vm">Cloud VM (AWS, GCP, Azure)</a></li>
+              <li><a href="#kubernetes">Kubernetes (Pod/Container)</a></li>
+              <li><a href="#edge-iot">Edge/IoT Environments</a></li>
+              <li><a href="#airgap">Air-Gapped Networks</a></li>
+            </ol>
+          </li>
+          <li><a href="#selectivity-policy">Selectivity Policy — The Throttling Problem</a>
+            <ol>
+              <li><a href="#throttling-risks">Risks of Throttling</a></li>
+              <li><a href="#safelist">The Safelist</a></li>
+              <li><a href="#contributor-targeting">Contributor Targeting</a></li>
+            </ol>
+          </li>
+          <li><a href="#hysteresis">Hysteresis and De-Escalation</a></li>
+          <li><a href="#decision-observability">Decision Observability and Audit Trail</a></li>
+          <li><a href="#walkthrough">Walkthrough: Memory Leak in Payment Service</a></li>
+          <li><a href="#capabilities">Linux Capabilities by Level</a></li>
+          <li><a href="#limitations">Known Limitations</a></li>
+          <li><a href="#references">References</a></li>
+        </ol>
+      </aside>
+
+      <!-- Content -->
+      <article class="doc-content">
+
+        <!-- ======================== 1. DESIGN PHILOSOPHY ======================== -->
+        <section id="design-philosophy">
+          <h2><span class="heading-number">1.</span> Design Philosophy — The Reflex Arc</h2>
+
+          <p>
+            The HOSA response system is modeled after the <strong>spinal reflex arc</strong> in
+            the human nervous system. When you touch a hot surface, the nociceptive signal
+            does not travel the full path to the cerebral cortex for contextual processing
+            and conscious deliberation — the latency of that long path (hundreds of
+            milliseconds) would result in tissue damage. Instead, the signal travels a
+            short arc to the spinal cord, which executes a reflexive muscle contraction in
+            sub-milliseconds, withdrawing the limb from the source of harm. The cortex is
+            notified <em>after</em> the reflex executes.
+          </p>
+
+          <div class="doc-comparison">
+            <div class="doc-comparison-col">
+              <h4>Biological Reflex Arc</h4>
+              <ul class="doc-list doc-list-plain">
+                <li>Sensor detects noxious stimulus</li>
+                <li>Signal → spinal cord (short path)</li>
+                <li>Immediate motor response</li>
+                <li>Cortex notified after the fact</li>
+                <li><em>→ Tissue preserved</em></li>
+              </ul>
+            </div>
+            <div class="doc-comparison-col">
+              <h4>HOSA Response System</h4>
+              <ul class="doc-list doc-list-plain">
+                <li>eBPF probes detect anomaly acceleration</li>
+                <li>Signal → user-space engine (local)</li>
+                <li>Immediate cgroups/XDP actuation</li>
+                <li>Orchestrator notified via webhook</li>
+                <li><em>→ Node preserved</em></li>
+              </ul>
+            </div>
+          </div>
+
+          <p>
+            This pattern — <strong>immediate local action followed by contextual
+            notification to command center</strong> — is the operational model of HOSA.
+            The response system is not binary ("everything is fine" vs. "kill everything").
+            It implements a <strong>spectrum of proportional responses</strong> that escalate
+            with the severity and rate of change of the detected anomaly.
+          </p>
+
+          <p>
+            Three non-negotiable principles govern all response actions:
+          </p>
+
+          <ol class="doc-list doc-list-numbered">
+            <li>
+              <strong>Proportionality.</strong> The severity of the response matches the
+              severity and acceleration of the anomaly. Throttling before killing.
+              Containment before isolation.
+            </li>
+            <li>
+              <strong>Reversibility.</strong> Every action at Levels 0–4 is automatically
+              reversible. No destructive action (process kill, interface deactivation) is
+              executed below Level 5.
+            </li>
+            <li>
+              <strong>Observability.</strong> Every autonomous action is logged locally with
+              full mathematical justification — the exact D<sub>M</sub> value, derivative,
+              threshold crossed, dimensional contribution, and action taken. The agent is
+              fully auditable.
+            </li>
+          </ol>
+        </section>
+
+        <!-- ======================== 2. LEVELS OVERVIEW ======================== -->
+        <section id="levels-overview">
+          <h2><span class="heading-number">2.</span> Response Levels Overview</h2>
+
+          <p>
+            HOSA implements <strong>six response levels</strong> (0–5), each with specific
+            activation conditions, actions, and reversibility guarantees. The levels form a
+            monotonically escalating spectrum of intervention intensity:
+          </p>
+
+          <div class="doc-diagram">
+            <div class="doc-diagram-title">
+              <span class="figure-number">Figure 1</span>
+              The graduated response spectrum
+            </div>
+            <div class="doc-diagram-content">
+              <div class="doc-spectrum">
+                <div class="doc-spectrum-bar">
+                  <div class="doc-spectrum-labels">
+                    <span class="ds-label ds-zero" style="width:16.66%">0</span>
+                    <span class="ds-label ds-neg" style="width:16.66%">1</span>
+                    <span class="ds-label ds-neg" style="width:16.66%">2</span>
+                    <span class="ds-label ds-pos" style="width:16.66%">3</span>
+                    <span class="ds-label ds-pos" style="width:16.66%">4</span>
+                    <span class="ds-label ds-pos" style="width:16.66%">5</span>
+                  </div>
+                  <div class="doc-spectrum-names">
+                    <span style="width:16.66%">Homeostasis</span>
+                    <span style="width:16.66%">Vigilance</span>
+                    <span style="width:16.66%">Soft Containment</span>
+                    <span style="width:16.66%">Active Containment</span>
+                    <span style="width:16.66%">Severe Containment</span>
+                    <span style="width:16.66%">Quarantine</span>
+                  </div>
+                </div>
+                <div class="doc-spectrum-axes">
+                  <span class="ds-axis-left">← No intervention</span>
+                  <span class="ds-axis-center">PROPORTIONAL</span>
+                  <span class="ds-axis-right">Full isolation →</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="figure-caption figure-caption-above">
+            <span class="figure-number">Table 1</span>
+            <span class="figure-text">Summary of all six response levels with activation conditions and reversibility.</span>
+          </div>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr>
+                  <th>Level</th>
+                  <th>Name</th>
+                  <th>Activation Condition</th>
+                  <th>Action</th>
+                  <th>Reversibility</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>0</strong></td>
+                  <td><strong>Homeostasis</strong></td>
+                  <td>D<sub>M</sub> &lt; θ₁ and dD<sub>M</sub>/dt ≤ 0</td>
+                  <td>None. Suppress redundant telemetry (heartbeat only).</td>
+                  <td>N/A</td>
+                </tr>
+                <tr>
+                  <td><strong>1</strong></td>
+                  <td><strong>Vigilance</strong></td>
+                  <td>D<sub>M</sub> &gt; θ₁ or sustained dD<sub>M</sub>/dt &gt; 0</td>
+                  <td>Local logging. Increase sampling rate. No intervention.</td>
+                  <td>Automatic (return to L0 when condition ceases)</td>
+                </tr>
+                <tr>
+                  <td><strong>2</strong></td>
+                  <td><strong>Soft Containment</strong></td>
+                  <td>D<sub>M</sub> &gt; θ₂ and dD<sub>M</sub>/dt &gt; 0</td>
+                  <td><code>renice</code> non-essential processes via cgroups. Webhook notification.</td>
+                  <td>Automatic (gradual relaxation)</td>
+                </tr>
+                <tr>
+                  <td><strong>3</strong></td>
+                  <td><strong>Active Containment</strong></td>
+                  <td>D<sub>M</sub> &gt; θ₃ and d²D<sub>M</sub>/dt² &gt; 0 (positive acceleration)</td>
+                  <td>CPU/memory throttling via cgroups. Partial load shedding via XDP. Urgent webhook.</td>
+                  <td>Automatic with hysteresis</td>
+                </tr>
+                <tr>
+                  <td><strong>4</strong></td>
+                  <td><strong>Severe Containment</strong></td>
+                  <td>D<sub>M</sub> &gt; θ₄ or convergence velocity indicates exhaustion in &lt; T seconds</td>
+                  <td>Aggressive throttling. XDP blocks all inbound except healthcheck. Freeze non-critical cgroups.</td>
+                  <td>Requires sustained D<sub>M</sub> &lt; θ₃</td>
+                </tr>
+                <tr>
+                  <td><strong>5</strong></td>
+                  <td><strong>Quarantine</strong></td>
+                  <td>Containment failure at previous levels. D<sub>M</sub> rising despite active mitigations.</td>
+                  <td>Network isolation. Non-essential processes frozen (SIGSTOP). Detailed log persisted.</td>
+                  <td><strong>Manual intervention required</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            The thresholds θ₁ through θ₄ are not static constants. They are computed during
+            the warm-up phase as multiples of the baseline standard deviation observed in
+            homeostasis (e.g., θ₁ = 2σ, θ₂ = 3σ, θ₃ = 4σ, θ₄ = 5σ). This ensures the
+            thresholds are <strong>adapted to the specific node's behavioral profile</strong>,
+            not arbitrary values.
+          </p>
+        </section>
+
+        <!-- ======================== 3. LEVEL 0 ======================== -->
+        <section id="level-0">
+          <h2><span class="heading-number">3.</span> Level 0 — Homeostasis</h2>
+
+          <p>
+            The steady-state normal operation. D<sub>M</sub> is low and stable, the Load
+            Direction Index φ oscillates around zero, derivatives are near zero, and the
+            covariance structure is consistent with the baseline profile. HOSA performs
+            <strong>no intervention</strong> — the system is operating within its expected
+            behavioral envelope.
+          </p>
+
+          <div class="doc-formula">
+            <div class="doc-formula-content">
+              Level 0 ⟺ D<sub>M</sub>(t) &lt; θ₁ ∧ dD̄<sub>M</sub>/dt ≤ 0
+            </div>
+            <div class="doc-formula-label">Condition — Homeostasis</div>
+          </div>
+
+          <p>
+            During homeostasis, the primary activity of the agent is
+            <strong>baseline refinement</strong>: μ and Σ continue to be updated
+            incrementally via Welford (see <a href="math-model.html#welford">§3 — Welford</a>),
+            continuously improving the statistical profile of the node.
+          </p>
+
+          <section id="thalamic-filter">
+            <h3><span class="heading-number">3.1.</span> The Thalamic Filter</h3>
+
+            <p>
+              In neuroscience, the thalamus acts as a relay station that filters sensory
+              information before it reaches the cortex — suppressing redundant or low-priority
+              signals to prevent cognitive overload. HOSA implements an analogous mechanism:
+              the <strong>Thalamic Filter</strong>.
+            </p>
+
+            <p>
+              When the system is in homeostasis, the vast majority of telemetry data is
+              <strong>redundant</strong> — it confirms what is already known: "the system is
+              healthy." Transmitting this data to external monitoring systems (Prometheus,
+              Datadog, etc.) incurs cost:
+            </p>
+
+            <ul class="doc-list">
+              <li><strong>Network bandwidth</strong> — metric payloads consume egress</li>
+              <li><strong>TSDB storage</strong> — each sample is stored, indexed, and retained</li>
+              <li><strong>Query cost</strong> — more data increases query latency and compute</li>
+              <li><strong>Financial cost</strong> — cloud monitoring is typically priced per metric per month</li>
+            </ul>
+
+            <p>
+              The Thalamic Filter suppresses detailed telemetry during homeostasis, emitting
+              only a <strong>periodic heartbeat</strong> that confirms the node is alive, healthy,
+              and in homeostasis. When D<sub>M</sub> begins to rise (transition to Level 1+),
+              the filter is deactivated and full telemetry resumes immediately.
+            </p>
+
+            <div class="doc-callout doc-callout-info">
+              <div class="doc-callout-title">FinOps Impact</div>
+              <p>
+                For a fleet of 1,000 nodes where 95% are in homeostasis at any given time,
+                the Thalamic Filter can reduce metric ingestion volume by up to 90% — a
+                direct and significant reduction in observability costs. The filter does not
+                compromise detection capability because detection is performed locally by
+                the agent, not by the external monitoring system.
+              </p>
+            </div>
+          </section>
+        </section>
+
+        <!-- ======================== 4. LEVEL 1 ======================== -->
+        <section id="level-1">
+          <h2><span class="heading-number">4.</span> Level 1 — Vigilance</h2>
+
+          <p>
+            The first stage of heightened awareness. HOSA has detected a deviation from
+            baseline that warrants closer observation, but the deviation is not yet severe
+            or accelerating enough to justify intervention.
+          </p>
+
+          <div class="doc-formula">
+            <div class="doc-formula-content">
+              Level 1 ⟺ D<sub>M</sub>(t) &gt; θ₁ ∨ sustained dD̄<sub>M</sub>/dt &gt; 0
+            </div>
+            <div class="doc-formula-label">Condition — Vigilance</div>
+          </div>
+
+          <p><strong>Actions:</strong></p>
+
+          <ul class="doc-list">
+            <li>
+              <strong>Sampling rate increase.</strong> The eBPF collection interval is reduced
+              from the homeostasis rate (typically 100ms) to a heightened rate (typically 10ms),
+              providing 10× temporal resolution for derivative estimation.
+            </li>
+            <li>
+              <strong>Local structured logging.</strong> HOSA begins recording the state
+              vector, D<sub>M</sub>, derivatives, and dimensional contributions to the local
+              audit log at full resolution.
+            </li>
+            <li>
+              <strong>Thalamic Filter deactivated.</strong> Full telemetry is transmitted to
+              external monitoring systems, ensuring the operator has visibility.
+            </li>
+            <li>
+              <strong>No system intervention.</strong> No processes are modified, throttled,
+              or signaled. HOSA is observing, not acting.
+            </li>
+          </ul>
+
+          <p>
+            <strong>Reversibility:</strong> Automatic. When D<sub>M</sub> drops below θ₁ and
+            the derivative is non-positive for a sustained period, HOSA returns to Level 0.
+            The sampling rate is restored and the Thalamic Filter is re-engaged.
+          </p>
+
+          <div class="doc-callout doc-callout-note">
+            <div class="doc-callout-title">Why Not Intervene Immediately?</div>
+            <p>
+              Many anomalies are transient — a brief CPU spike from a cron job, a momentary
+              memory allocation for a large request, a burst of network traffic from a
+              health check cascade. Level 1 provides a <em>grace period</em> during which
+              the agent accumulates evidence before committing to intervention. This
+              dramatically reduces false positive interventions while adding minimal latency
+              (typically &lt; 1 second) to genuine escalation.
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 5. LEVEL 2 ======================== -->
+        <section id="level-2">
+          <h2><span class="heading-number">5.</span> Level 2 — Soft Containment</h2>
+
+          <p>
+            The anomaly is confirmed and growing. D<sub>M</sub> has crossed the second
+            threshold and the first derivative remains positive — the system is moving away
+            from homeostasis and not self-correcting. HOSA begins <strong>gentle
+            intervention</strong> that reduces the priority of non-essential workloads
+            without hard-limiting any process.
+          </p>
+
+          <div class="doc-formula">
+            <div class="doc-formula-content">
+              Level 2 ⟺ D<sub>M</sub>(t) &gt; θ₂ ∧ dD̄<sub>M</sub>/dt &gt; 0
+            </div>
+            <div class="doc-formula-label">Condition — Soft Containment</div>
+          </div>
+
+          <p><strong>Actions:</strong></p>
+
+          <ul class="doc-list">
+            <li>
+              <strong><code>renice</code> non-essential processes.</strong> HOSA adjusts the
+              scheduling priority of processes in non-protected cgroups via
+              <code>cpu.weight</code>, giving protected processes (safelist) preferential
+              access to CPU time without hard-capping any process.
+            </li>
+            <li>
+              <strong>Webhook notification (opportunistic).</strong> HOSA dispatches a
+              <code>POST</code> to the configured webhook endpoint with severity
+              <code>warning</code>, including the full state vector, dimensional
+              contribution decomposition, and the suspected contributing cgroup.
+            </li>
+            <li>
+              <strong>Dimensional decomposition logging.</strong> The per-dimension
+              contributions c<sub>j</sub> to D<sub>M</sub>² are computed and logged,
+              identifying which resources are driving the anomaly (see
+              <a href="math-model.html#dimensional-contribution">§3 — Dimensional Contribution</a>).
+            </li>
+          </ul>
+
+          <p>
+            <strong>Reversibility:</strong> Automatic. When D<sub>M</sub> drops below θ₂,
+            the <code>cpu.weight</code> values are gradually restored to their original
+            values over a configurable relaxation period (default: 30 seconds). The gradual
+            relaxation prevents oscillation (flapping) between Level 1 and Level 2.
+          </p>
+        </section>
+
+        <!-- ======================== 6. LEVEL 3 ======================== -->
+        <section id="level-3">
+          <h2><span class="heading-number">6.</span> Level 3 — Active Containment</h2>
+
+          <p>
+            The critical transition point. The anomaly is not only present and growing — it
+            is <strong>accelerating</strong>. The second derivative d²D̄<sub>M</sub>/dt² is
+            positive, indicating that the rate of departure from homeostasis is itself
+            increasing. Without intervention, the system will reach resource exhaustion.
+          </p>
+
+          <div class="doc-formula">
+            <div class="doc-formula-content">
+              Level 3 ⟺ D<sub>M</sub>(t) &gt; θ₃ ∧ d²D̄<sub>M</sub>/dt² &gt; 0
+            </div>
+            <div class="doc-formula-label">Condition — Active Containment</div>
+          </div>
+
+          <p>
+            This is where HOSA deploys its primary actuation mechanisms: <strong>cgroups v2</strong>
+            for resource throttling and <strong>XDP</strong> for network load shedding.
+          </p>
+
+          <section id="cgroups-actuation">
+            <h3><span class="heading-number">6.1.</span> Actuation via cgroups v2</h3>
+
+            <p>
+              cgroups v2 <a href="#ref-heo" class="ref-link">[1]</a> provides the kernel's native
+              interface for controlling resource allocation per process group. HOSA manipulates
+              cgroup control files directly via the Linux VFS — no external libraries or
+              daemons are required.
+            </p>
+
+            <div class="doc-table-wrap">
+              <table class="doc-table">
+                <thead>
+                  <tr><th>Resource</th><th>Control File</th><th>HOSA Action</th><th>Effect</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Memory</strong></td>
+                    <td><code>memory.high</code></td>
+                    <td>Reduce from current limit to a lower value</td>
+                    <td>Kernel applies memory backpressure (aggressive reclaim). Process slows allocation rate but is <strong>not killed</strong>.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Memory (hard)</strong></td>
+                    <td><code>memory.max</code></td>
+                    <td>Set as absolute ceiling (Level 4+ only)</td>
+                    <td>Allocations beyond this limit trigger OOM within the cgroup, confined to the offending process group.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>CPU</strong></td>
+                    <td><code>cpu.max</code></td>
+                    <td>Reduce quota (e.g., from 100000/100000 to 50000/100000)</td>
+                    <td>Process group is limited to the specified fraction of CPU time per period.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>I/O</strong></td>
+                    <td><code>io.max</code></td>
+                    <td>Set read/write bandwidth limits</td>
+                    <td>I/O operations exceeding the limit are throttled by the block I/O scheduler.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p>
+              The critical design decision: HOSA uses <code>memory.high</code>, not
+              <code>memory.max</code>, at Level 3. The <code>memory.high</code> boundary is a
+              <em>soft limit</em> that instructs the kernel to apply memory reclaim pressure
+              — the process slows down but <strong>continues executing</strong>. This preserves
+              in-flight transactions and avoids the destructive effects of OOM-kill.
+            </p>
+          </section>
+
+          <section id="xdp-load-shedding">
+            <h3><span class="heading-number">6.2.</span> Load Shedding via XDP</h3>
+
+            <p>
+              XDP (eXpress Data Path) <a href="#ref-vieira" class="ref-link">[2]</a> allows
+              packet processing at the earliest possible point in the network stack — at the
+              NIC driver level, <strong>before</strong> the kernel allocates an
+              <code>sk_buff</code> structure. This makes XDP-based load shedding
+              extraordinarily efficient: dropped packets consume near-zero CPU.
+            </p>
+
+            <p>
+              At Level 3, HOSA attaches an XDP program that implements <strong>partial load
+              shedding</strong>:
+            </p>
+
+            <ul class="doc-list">
+              <li>
+                <strong>New connections are dropped.</strong> SYN packets from addresses not
+                in the existing connection table are discarded, preventing the server from
+                accepting additional work.
+              </li>
+              <li>
+                <strong>Existing connections are preserved.</strong> Packets belonging to
+                established connections (matched by 5-tuple) continue to be processed
+                normally, allowing in-flight transactions to complete.
+              </li>
+              <li>
+                <strong>Healthcheck traffic is exempted.</strong> Packets from configured
+                healthcheck sources (e.g., load balancer IP, Kubernetes API server) are
+                always passed through, ensuring the node remains visible to the orchestrator.
+              </li>
+            </ul>
+
+            <div class="doc-callout doc-callout-critical">
+              <div class="doc-callout-title">Why XDP over iptables/nftables?</div>
+              <p>
+                Traditional packet filtering via iptables/nftables operates at the Netfilter
+                layer — after the kernel has already allocated memory for the packet
+                (<code>sk_buff</code>), parsed headers, and performed routing lookups. Under
+                a DDoS flood, this processing itself can saturate the CPU. XDP drops packets
+                <em>before</em> any of this work occurs, providing packet filtering that
+                scales to millions of packets per second with minimal CPU overhead.
+              </p>
+            </div>
+          </section>
+
+          <p>
+            <strong>Reversibility:</strong> Automatic with hysteresis. When D<sub>M</sub>
+            drops below θ₂ (not θ₃ — the lower threshold provides a buffer against
+            oscillation) for a <strong>sustained period</strong> (default: 60 seconds),
+            containment is gradually relaxed. The XDP program transitions from drop-new to
+            rate-limit-new before being fully removed. cgroup limits are restored
+            incrementally, not instantaneously.
+          </p>
+        </section>
+
+        <!-- ======================== 7. LEVEL 4 ======================== -->
+        <section id="level-4">
+          <h2><span class="heading-number">7.</span> Level 4 — Severe Containment</h2>
+
+          <p>
+            The anomaly is severe. Either D<sub>M</sub> has exceeded the fourth threshold,
+            or the velocity of convergence toward resource exhaustion indicates that a
+            critical resource (typically memory or disk) will be fully consumed within a
+            short time window.
+          </p>
+
+          <div class="doc-formula">
+            <div class="doc-formula-content">
+              Level 4 ⟺ D<sub>M</sub>(t) &gt; θ₄
+              <br/><br/>
+              ∨ TTF(t) &lt; T<sub>critical</sub>
+              <br/><br/>
+              <em>where TTF = estimated Time to resource Failure based on derivative extrapolation</em>
+            </div>
+            <div class="doc-formula-label">Condition — Severe Containment</div>
+          </div>
+
+          <p><strong>Actions:</strong></p>
+
+          <ul class="doc-list">
+            <li>
+              <strong>Aggressive throttling.</strong> <code>cpu.max</code> and
+              <code>memory.max</code> (hard limits) are applied to contributing cgroups.
+              The <code>memory.high</code> soft limit from Level 3 is replaced with a hard
+              ceiling.
+            </li>
+            <li>
+              <strong>Full inbound traffic block.</strong> The XDP program is updated to
+              drop <strong>all</strong> inbound traffic except: healthcheck probes from the
+              orchestrator, and management traffic (SSH, IPMI) from configured addresses.
+            </li>
+            <li>
+              <strong>Non-critical cgroup freeze.</strong> cgroups identified as
+              non-essential are frozen via <code>cgroup.freeze</code>, suspending all
+              processes within them. This is equivalent to sending SIGSTOP to every
+              process in the group, but managed at the cgroup level.
+            </li>
+            <li>
+              <strong>Critical webhook.</strong> A high-priority notification is dispatched
+              with severity <code>critical</code>, including the full state vector, the
+              estimated TTF, and the actions taken.
+            </li>
+          </ul>
+
+          <p>
+            <strong>Reversibility:</strong> Requires sustained recovery. D<sub>M</sub> must
+            drop below θ₃ and remain there for an extended period (default: 5 minutes)
+            before Level 4 mitigations are relaxed. The extended hold period accounts for
+            the severity of the situation — a brief dip in D<sub>M</sub> during a
+            cascading failure should not trigger premature relaxation.
+          </p>
+        </section>
+
+        <!-- ======================== 8. LEVEL 5 ======================== -->
+        <section id="level-5">
+          <h2><span class="heading-number">8.</span> Level 5 — Autonomous Quarantine</h2>
+
+          <p>
+            The last resort. All previous containment levels have failed to stabilize the
+            system. D<sub>M</sub> continues to rise despite active throttling and load
+            shedding. The node is in uncontrolled collapse or has been compromised by
+            activity that cannot be contained by resource throttling alone.
+          </p>
+
+          <div class="doc-formula">
+            <div class="doc-formula-content">
+              Level 5 ⟺ Containment failure at Levels 3–4
+              <br/>
+              ∧ D<sub>M</sub>(t) rising despite active mitigations
+              <br/><br/>
+              ∨ ICP(t) &gt; ICP<sub>critical</sub>
+              <br/>
+              <em>(high Propagation Behavior Index — node may be spreading the problem)</em>
+            </div>
+            <div class="doc-formula-label">Condition — Autonomous Quarantine</div>
+          </div>
+
+          <p><strong>Actions:</strong></p>
+
+          <ul class="doc-list">
+            <li>
+              <strong>Network isolation.</strong> Programmatic deactivation of network
+              interfaces (strategy varies by environment — see
+              <a href="#quarantine-modes">§9</a>).
+            </li>
+            <li>
+              <strong>Process freeze.</strong> All non-essential processes are frozen via
+              SIGSTOP. Kernel processes, the HOSA agent itself, and explicitly protected
+              processes continue running.
+            </li>
+            <li>
+              <strong>Persistent logging.</strong> A detailed forensic log is written to
+              persistent storage, including the complete timeline of detection, escalation,
+              and actions taken.
+            </li>
+            <li>
+              <strong>Final webhook.</strong> Before network isolation, HOSA dispatches a
+              last webhook signaling the quarantine state. If the webhook fails (network
+              already compromised), the state is signaled through available out-of-band
+              channels (IPMI, cloud metadata, Kubernetes API — depending on environment).
+            </li>
+          </ul>
+
+          <p>
+            <strong>Reversibility:</strong> <strong>Manual intervention required.</strong>
+            Level 5 is the only level that cannot be automatically reversed. An
+            administrator must inspect the node, diagnose the root cause, and explicitly
+            restore the system. This is a deliberate design decision: if the agent's full
+            arsenal of containment measures failed to stabilize the system, the problem
+            requires human judgment.
+          </p>
+
+          <div class="doc-callout doc-callout-critical">
+            <div class="doc-callout-title">The ICP Trigger</div>
+            <p>
+              Level 5 can also be triggered by a high Propagation Behavior Index (ICP)
+              regardless of containment effectiveness. If the node shows signs of
+              propagation behavior (outbound connection explosion, anomalous forks,
+              destination entropy — see <a href="math-model.html#supplementary-metrics">§3 —
+              Supplementary Metrics</a>), the priority shifts from <em>preserving the
+              node</em> to <em>protecting the cluster</em>. Network isolation is applied
+              preemptively to prevent lateral movement or cascading failure.
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 9. QUARANTINE MODES ======================== -->
+        <section id="quarantine-modes">
+          <h2><span class="heading-number">9.</span> Quarantine Modes by Environment Class</h2>
+
+          <p>
+            The feasibility and strategy of network isolation vary fundamentally by
+            infrastructure class. A bare-metal server with IPMI can safely deactivate its
+            primary network interfaces because it remains accessible via out-of-band
+            management. A cloud VM that deactivates its network interface becomes
+            permanently unreachable. HOSA implements <strong>environment-aware quarantine
+            modes</strong>, selected automatically during the Hardware Proprioception phase
+            or configured explicitly by the operator.
+          </p>
+
+          <section id="bare-metal">
+            <h3><span class="heading-number">9.1.</span> Bare Metal with IPMI/iLO/iDRAC</h3>
+
+            <p>
+              <strong>Detection:</strong> Presence of IPMI interface via
+              <code>/sys/class/net/</code> and <code>ipmi_*</code> kernel modules.
+            </p>
+
+            <p>
+              <strong>Strategy:</strong> Programmatic deactivation of <strong>all</strong>
+              network interfaces <strong>except</strong> the out-of-band management interface
+              (IPMI/iLO/iDRAC). The node remains accessible via management console for
+              diagnosis and restoration.
+            </p>
+
+            <p>
+              <strong>Recovery:</strong> Manual via IPMI console. Operator inspects HOSA
+              logs, diagnoses root cause, restores interfaces, and restarts services.
+            </p>
+          </section>
+
+          <section id="cloud-vm">
+            <h3><span class="heading-number">9.2.</span> Cloud VM (AWS, GCP, Azure)</h3>
+
+            <p>
+              <strong>Detection:</strong> Via DMI/SMBIOS (<code>dmidecode</code>), presence
+              of metadata service (169.254.169.254), and hypervisor identification via
+              <code>/sys/hypervisor/</code> or CPUID.
+            </p>
+
+            <p>
+              <strong>Strategy:</strong> Does <strong>not</strong> deactivate network
+              interfaces. Instead:
+            </p>
+
+            <ol class="doc-list doc-list-numbered">
+              <li>
+                XDP applies total drop on all inbound/outbound traffic <strong>except</strong>:
+                traffic to the cloud metadata service (169.254.169.254), DHCP traffic (IP
+                lease maintenance), and traffic to the orchestrator API endpoint.
+              </li>
+              <li>
+                HOSA signals quarantine state via cloud-native mechanisms: instance
+                tag/label via metadata service (e.g., <code>hosa-quarantine=true</code>),
+                SNS/Pub-Sub publication, or healthcheck endpoint returning HTTP 503 with
+                JSON body detailing the state.
+              </li>
+              <li>
+                The external orchestrator (Kubernetes, ASG, etc.) is responsible for the
+                terminate/replace decision.
+              </li>
+            </ol>
+
+            <p>
+              <strong>Recovery:</strong> The external orchestrator terminates the instance
+              and provisions a replacement. If the orchestrator does not act within a
+              configurable timeout (default: 5 minutes), HOSA can execute
+              <strong>self-termination</strong> via cloud provider API (when IAM credentials
+              with appropriate permissions are available). Self-termination is
+              <strong>disabled by default</strong> and requires explicit activation.
+            </p>
+          </section>
+
+          <section id="kubernetes">
+            <h3><span class="heading-number">9.3.</span> Kubernetes (Pod/Container)</h3>
+
+            <p>
+              <strong>Detection:</strong> Execution in container via
+              <code>/proc/1/cgroup</code> with cgroup namespace, environment variables
+              <code>KUBERNETES_SERVICE_HOST</code>, or service account mounted at
+              <code>/var/run/secrets/kubernetes.io/</code>.
+            </p>
+
+            <p>
+              <strong>Strategy:</strong> HOSA operating as DaemonSet does <strong>not
+              isolate the node</strong> (it lacks permission to deactivate host interfaces).
+              Instead:
+            </p>
+
+            <ol class="doc-list doc-list-numbered">
+              <li>
+                Applies maximum containment via cgroups on pods identified as contributors.
+              </li>
+              <li>
+                Updates the Node status via Kubernetes API with taint
+                <code>hosa.io/quarantine=true:NoExecute</code> and condition
+                <code>HOSAQuarantine=True</code>, causing automatic pod evacuation by the
+                scheduler.
+              </li>
+              <li>
+                Emits a Kubernetes Event in the namespace of the affected pod with type
+                <code>Warning</code> and reason <code>HOSAQuarantine</code>.
+              </li>
+            </ol>
+
+            <p>
+              <strong>Recovery:</strong> Operator or automation removes the taint after
+              investigation. The node returns to the scheduling pool.
+            </p>
+          </section>
+
+          <section id="edge-iot">
+            <h3><span class="heading-number">9.4.</span> Edge/IoT Environments</h3>
+
+            <p>
+              For edge devices <strong>with physical access</strong>
+              (flag <code>environment: edge-physical</code>): complete network interface
+              deactivation. The device operates in isolated mode until physical intervention.
+              Logs are preserved on local persistent storage (flash/eMMC). If the device
+              has a status LED or display, HOSA signals quarantine state visually.
+            </p>
+
+            <p>
+              For edge devices <strong>without physical access</strong>
+              (flag <code>environment: edge-remote</code>): quarantine with
+              <strong>hardware watchdog timer</strong>. Network interfaces are deactivated,
+              and a hardware watchdog (<code>/dev/watchdog</code>) is activated with a
+              configurable timeout (default: 30 minutes). If no intervention occurs before
+              the timeout, the watchdog reboots the device, which returns to
+              pre-quarantine state with a persistent flag
+              <code>quarantine_recovery=true</code>. On restart with this flag, HOSA enters
+              conservative mode (logging only) for a configurable period to allow remote
+              diagnosis.
+            </p>
+          </section>
+
+          <section id="airgap">
+            <h3><span class="heading-number">9.5.</span> Air-Gapped Networks</h3>
+
+            <p>
+              (flag <code>environment: airgap</code>): Identical to bare metal, with the
+              addition that <strong>all opportunistic communication is permanently
+              disabled</strong> (no webhooks, no endpoint exposure). HOSA operates in purely
+              endogenous mode. Logs are written exclusively to local encrypted storage and
+              collected periodically by authorized personnel with physical access.
+            </p>
+          </section>
+
+          <div class="doc-callout doc-callout-note">
+            <div class="doc-callout-title">Design Principle: Auto-Detect with Manual Override</div>
+            <p>
+              HOSA attempts to automatically detect the environment class and select the
+              appropriate quarantine mode. The operator can override this detection via
+              explicit configuration. In case of ambiguity (e.g., VM in private cloud that
+              doesn't respond to the standard metadata service), HOSA assumes the most
+              conservative mode (cloud — does not deactivate interfaces), prioritizing
+              <strong>recoverability over isolation</strong>.
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 10. SELECTIVITY POLICY ======================== -->
+        <section id="selectivity-policy">
+          <h2><span class="heading-number">10.</span> Selectivity Policy — The Throttling Problem</h2>
+
+          <p>
+            Process throttling via cgroups is an effective mitigation against resource
+            exhaustion, but it introduces <strong>secondary risks</strong> that must be
+            explicitly addressed. This section formalizes HOSA's selectivity policy —
+            the rules governing <em>which</em> processes are throttled and <em>which</em>
+            are protected.
+          </p>
+
+          <section id="throttling-risks">
+            <h3><span class="heading-number">10.1.</span> Risks of Throttling</h3>
+
+            <div class="doc-table-wrap">
+              <table class="doc-table">
+                <thead>
+                  <tr><th>Risk</th><th>Mechanism</th><th>Potential Impact</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Cascading timeouts</strong></td>
+                    <td>A throttled HTTP backend accumulates connections upstream</td>
+                    <td>Degradation propagates to services that depend on the throttled service</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Transaction deadlocks</strong></td>
+                    <td>A process throttled during a database transaction holds locks indefinitely</td>
+                    <td>Other transactions block, potentially freezing the entire database</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Critical starvation</strong></td>
+                    <td>If kubelet is throttled, the node is marked NotReady</td>
+                    <td>All pods are evacuated, causing more damage than the original problem</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Self-referential failure</strong></td>
+                    <td>If the HOSA agent itself is throttled</td>
+                    <td>Detection latency increases, potentially missing the window for effective mitigation</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="safelist">
+            <h3><span class="heading-number">10.2.</span> The Safelist</h3>
+
+            <p>
+              HOSA maintains a <strong>safelist</strong> of processes and cgroups that are
+              <strong>never</strong> targeted for throttling, regardless of their resource
+              consumption:
+            </p>
+
+            <ul class="doc-list">
+              <li><strong>Kernel processes</strong> — <code>kthreadd</code>, <code>ksoftirqd</code>, <code>kworker</code>, etc.</li>
+              <li><strong>The HOSA agent itself</strong> — always the first entry in the safelist</li>
+              <li><strong>Orchestration agents</strong> — <code>kubelet</code>, <code>containerd</code>, <code>dockerd</code> (auto-detected when present)</li>
+              <li><strong>Operator-designated processes</strong> — explicitly marked via configuration or cgroup label</li>
+            </ul>
+
+            <p>
+              The safelist is populated during the Hardware Proprioception phase and can be
+              modified at runtime via the HOSA configuration file.
+            </p>
+          </section>
+
+          <section id="contributor-targeting">
+            <h3><span class="heading-number">10.3.</span> Contributor Targeting</h3>
+
+            <p>
+              Throttling is applied preferentially to the processes identified as the
+              <strong>dominant contributors</strong> to the anomaly. The targeting algorithm
+              uses two inputs:
+            </p>
+
+            <ol class="doc-list doc-list-numbered">
+              <li>
+                <strong>Dimensional decomposition</strong> (from
+                <a href="math-model.html#dimensional-contribution">§3 — Dimensional
+                Contribution</a>): identifies <em>which resource</em> is driving the
+                anomaly (e.g., memory contributes 68% of D<sub>M</sub>²).
+              </li>
+              <li>
+                <strong>Per-cgroup consumption delta</strong>: identifies <em>which
+                process group</em> is consuming the most of the dominant resource. This is
+                determined by comparing <code>memory.current</code>,
+                <code>cpu.stat</code>, or <code>io.stat</code> across cgroups and
+                identifying the group with the largest recent increase.
+              </li>
+            </ol>
+
+            <p>
+              The combination of dimensional decomposition and per-cgroup attribution allows
+              HOSA to answer the critical question: <strong>"What specific process is
+              consuming what specific resource in a way that is driving the system away
+              from homeostasis?"</strong> — and to target its intervention precisely at
+              that intersection.
+            </p>
+          </section>
+        </section>
+
+        <!-- ======================== 11. HYSTERESIS ======================== -->
+        <section id="hysteresis">
+          <h2><span class="heading-number">11.</span> Hysteresis and De-Escalation</h2>
+
+          <p>
+            A naïve implementation that escalates at threshold θ<sub>n</sub> and
+            de-escalates at the same threshold would produce <strong>oscillation</strong>
+            (flapping): the system crosses the threshold, containment activates, D<sub>M</sub>
+            drops below the threshold, containment deactivates, D<sub>M</sub> rises again,
+            and the cycle repeats indefinitely.
+          </p>
+
+          <p>
+            HOSA implements <strong>hysteresis</strong> on all level transitions:
+          </p>
+
+          <div class="doc-formula">
+            <div class="doc-formula-content">
+              Escalation: Level N → N+1 when D<sub>M</sub> &gt; θ<sub>N+1</sub>
+              <br/><br/>
+              De-escalation: Level N → N−1 when D<sub>M</sub> &lt; θ<sub>N−1</sub> for t &gt; T<sub>hold</sub>(N)
+            </div>
+            <div class="doc-formula-label">Equation 1 — Hysteresis Rules</div>
+          </div>
+
+          <p>Where:</p>
+
+          <ul class="doc-list">
+            <li>
+              <strong>Escalation threshold</strong> is the <em>next</em> level's threshold
+              (θ<sub>N+1</sub>)
+            </li>
+            <li>
+              <strong>De-escalation threshold</strong> is the <em>previous</em> level's
+              threshold (θ<sub>N−1</sub>) — one level <em>below</em> the escalation
+              threshold, creating a dead zone that prevents oscillation
+            </li>
+            <li>
+              <strong>T<sub>hold</sub>(N)</strong> is the minimum hold time before
+              de-escalation is permitted — longer for higher levels:
+            </li>
+          </ul>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table doc-table-compact">
+              <thead>
+                <tr><th>Transition</th><th>De-escalation Threshold</th><th>Minimum Hold Time</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Level 1 → 0</td><td>D<sub>M</sub> &lt; θ₁</td><td>10 seconds</td></tr>
+                <tr><td>Level 2 → 1</td><td>D<sub>M</sub> &lt; θ₁</td><td>30 seconds</td></tr>
+                <tr><td>Level 3 → 2</td><td>D<sub>M</sub> &lt; θ₂</td><td>60 seconds</td></tr>
+                <tr><td>Level 4 → 3</td><td>D<sub>M</sub> &lt; θ₃</td><td>5 minutes</td></tr>
+                <tr><td>Level 5 → manual</td><td>N/A</td><td>N/A (manual only)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            Additionally, de-escalation is always <strong>gradual</strong>: HOSA never jumps
+            from Level 4 to Level 0 in a single step. Each level is traversed in sequence,
+            with the hold time enforced at each transition. This ensures that relaxation of
+            containment measures is cautious and monitored.
+          </p>
+
+          <div class="doc-callout doc-callout-note">
+            <div class="doc-callout-title">The Second Derivative as De-Escalation Accelerator</div>
+            <p>
+              When d²D̄<sub>M</sub>/dt² is strongly negative (the system is decelerating
+              rapidly toward homeostasis — the mitigation is clearly working), the hold
+              times can be optionally reduced by a configurable factor. This allows faster
+              recovery when the evidence of effective mitigation is unambiguous. This
+              optimization is disabled by default and requires explicit activation.
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 12. DECISION OBSERVABILITY ======================== -->
+        <section id="decision-observability">
+          <h2><span class="heading-number">12.</span> Decision Observability and Audit Trail</h2>
+
+          <p>
+            Every autonomous action taken by HOSA is recorded in a <strong>local structured
+            log</strong> with full mathematical justification. This is not optional — it is
+            Architectural Principle #5 (Decision Observability). An agent that executes
+            autonomous mitigation on production systems <strong>must</strong> be auditable.
+          </p>
+
+          <p>
+            Each log entry contains:
+          </p>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr><th>Field</th><th>Description</th><th>Example</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>timestamp</code></td>
+                  <td>Nanosecond-precision UTC timestamp</td>
+                  <td><code>2026-03-10T14:23:09.127Z</code></td>
+                </tr>
+                <tr>
+                  <td><code>level</code></td>
+                  <td>Response level (0–5)</td>
+                  <td><code>2</code></td>
+                </tr>
+                <tr>
+                  <td><code>level_name</code></td>
+                  <td>Human-readable level name</td>
+                  <td><code>SOFT_CONTAINMENT</code></td>
+                </tr>
+                <tr>
+                  <td><code>d_m</code></td>
+                  <td>Current Mahalanobis Distance</td>
+                  <td><code>4.7</code></td>
+                </tr>
+                <tr>
+                  <td><code>d_m_derivative</code></td>
+                  <td>First derivative (velocity)</td>
+                  <td><code>+2.1</code></td>
+                </tr>
+                <tr>
+                  <td><code>d_m_acceleration</code></td>
+                  <td>Second derivative (acceleration)</td>
+                  <td><code>+0.5</code></td>
+                </tr>
+                <tr>
+                  <td><code>phi</code></td>
+                  <td>Load Direction Index</td>
+                  <td><code>+1.8</code></td>
+                </tr>
+                <tr>
+                  <td><code>dominant_dims</code></td>
+                  <td>Top contributing dimensions with c<sub>j</sub> percentages</td>
+                  <td><code>mem_used:68%, mem_pressure:19%, io_latency:8%</code></td>
+                </tr>
+                <tr>
+                  <td><code>target_cgroup</code></td>
+                  <td>The cgroup targeted for action (if any)</td>
+                  <td><code>/kubepods/pod-payment-7b4f</code></td>
+                </tr>
+                <tr>
+                  <td><code>action</code></td>
+                  <td>The specific action taken</td>
+                  <td><code>memory.high 2G→1.6G</code></td>
+                </tr>
+                <tr>
+                  <td><code>action_effect</code></td>
+                  <td>Whether the action is having the desired effect</td>
+                  <td><code>effective (d2DM/dt2 &lt; 0)</code></td>
+                </tr>
+                <tr>
+                  <td><code>regime</code></td>
+                  <td>Current regime classification</td>
+                  <td><code>+4 (Local Failure)</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            Logs are written to <code>/var/log/hosa/decisions.log</code> in JSON Lines
+            format. Log rotation is managed by the agent (configurable max file size and
+            retention). When webhook connectivity is available, the same structured data
+            is included in webhook payloads.
+          </p>
+
+          <div class="doc-blockquote">
+            <p>
+              "The operator should be able to read HOSA's decision log and answer,
+              for every action taken: What did the agent observe? What mathematical
+              threshold was crossed? What action did it take? Was the action effective?
+              The log is the agent's testimony."
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 13. WALKTHROUGH ======================== -->
+        <section id="walkthrough">
+          <h2><span class="heading-number">13.</span> Walkthrough: Memory Leak in Payment Service</h2>
+
+          <p>
+            This end-to-end scenario illustrates the full perceptive-motor cycle of the
+            response system, from detection through containment and stabilization.
+            Numerical values are representative and based on behavior observed in
+            production systems.
+          </p>
+
+          <p><strong>Context:</strong></p>
+          <ul class="doc-list">
+            <li>Node: VM <code>worker-node-07</code> in Kubernetes cluster, 8 vCPUs, 16GB RAM</li>
+            <li>Workload: 12 pods, including <code>payment-service-7b4f</code> (Java, 2GB cgroup limit)</li>
+            <li>External monitoring: Prometheus with 15s scrape interval, alert rule: <code>memory &gt; 1.8GB for 1m</code></li>
+            <li>HOSA: In homeostasis (Level 0) for 6 hours. Baseline calibrated. 8-dimensional state vector.</li>
+            <li>Memory leak rate: ~50MB/s (circular reference in session cache)</li>
+          </ul>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr><th>Time</th><th>System State</th><th>HOSA (Endogenous)</th><th>Prometheus (Exogenous)</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>t=0s</strong></td>
+                  <td>Leak starts. mem: 61%</td>
+                  <td>D<sub>M</sub>=1.1. Level 0 (Homeostasis).</td>
+                  <td>Last scrape 8s ago. Data shows: "healthy".</td>
+                </tr>
+                <tr>
+                  <td><strong>t=1s</strong></td>
+                  <td>mem: 64%. PSI: 18%</td>
+                  <td>⚡ D<sub>M</sub>=2.8. <strong>Level 0→1</strong>. Sampling: 100ms→10ms. Log: dominant dim = <code>mem_used</code> (72%).</td>
+                  <td>(no scrape)</td>
+                </tr>
+                <tr>
+                  <td><strong>t=2s</strong></td>
+                  <td>mem: 68%. PSI: 29%. Swap activating.</td>
+                  <td>⚡ D<sub>M</sub>=4.7. <strong>Level 1→2</strong>. <code>memory.high</code> → 1.6G on <code>payment-service-7b4f</code>. Webhook dispatched.</td>
+                  <td>(no scrape)</td>
+                </tr>
+                <tr>
+                  <td><strong>t=4s</strong></td>
+                  <td>mem: 72% (rate reduced by containment)</td>
+                  <td>D<sub>M</sub>=5.9. dD<sub>M</sub>/dt <strong>decelerating</strong> (+2.1→+1.2). d²D<sub>M</sub>/dt² = −0.45. Containment <strong>effective</strong>. Maintains Level 2.</td>
+                  <td>Scrape! mem=1.47GB. Rule: &gt;1.8GB for 1m. Result: <strong>OK</strong> (!)</td>
+                </tr>
+                <tr>
+                  <td><strong>t=8s</strong></td>
+                  <td>mem: 74% (plateau — reclaim ≈ allocation)</td>
+                  <td>D<sub>M</sub>=6.2. dD<sub>M</sub>/dt ≈ 0. <strong>Stabilized.</strong> System degraded but functional. Transactions preserved.</td>
+                  <td>(no scrape)</td>
+                </tr>
+                <tr>
+                  <td><strong>t=35s</strong></td>
+                  <td>mem: 75% (held by containment)</td>
+                  <td>Maintains containment. Operator received webhook with full dimensional context.</td>
+                  <td>Scrape. mem=1.55GB. Rule: OK (!) — containment prevents threshold breach.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p><strong>Counterfactual — Without HOSA:</strong></p>
+
+          <ul class="doc-list">
+            <li><strong>t≈40s:</strong> Container allocates ~3GB, exceeds 2GB cgroup limit. OOM-Kill terminates the Java process. All in-flight payment transactions are aborted without graceful shutdown.</li>
+            <li><strong>t≈80s:</strong> Kubelet restarts the pod. Memory leak persists. CrashLoopBackOff begins (~40s crash cycles).</li>
+            <li><strong>t≈100s:</strong> Prometheus fires alert (<code>for 1m</code> condition finally satisfied) — <strong>60 seconds after the first crash</strong>. Customers have been experiencing 502 errors for a full minute.</li>
+          </ul>
+
+          <div class="doc-callout doc-callout-info">
+            <div class="doc-callout-title">Key Insight</div>
+            <p>
+              HOSA transformed a <strong>destructive crash with data loss</strong> into
+              <strong>controlled degradation with functional preservation</strong>. Detection
+              took 1 second (vs. &gt;60 seconds for the exogenous model). The containment
+              preserved in-flight transactions. The operator received actionable information
+              with dimensional context — not a binary alert 100 seconds too late.
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 14. CAPABILITIES ======================== -->
+        <section id="capabilities">
+          <h2><span class="heading-number">14.</span> Linux Capabilities by Level</h2>
+
+          <p>
+            When HOSA operates as a container (DaemonSet in Kubernetes), its access to host
+            cgroups and network interfaces depends on Linux capabilities. Following the
+            <strong>principle of least privilege</strong>, the required capabilities are
+            documented per response level:
+          </p>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr><th>Levels</th><th>Required Capabilities</th><th>Access Needed</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>0–1</strong></td>
+                  <td><code>CAP_BPF</code></td>
+                  <td>Read-only access to <code>/sys/</code>. eBPF probe attachment for metric collection.</td>
+                </tr>
+                <tr>
+                  <td><strong>2</strong></td>
+                  <td><code>CAP_BPF</code>, <code>CAP_SYS_ADMIN</code></td>
+                  <td>Write access to cgroup control files (<code>cpu.weight</code>).</td>
+                </tr>
+                <tr>
+                  <td><strong>3–4</strong></td>
+                  <td><code>CAP_BPF</code>, <code>CAP_SYS_ADMIN</code>, <code>CAP_NET_ADMIN</code></td>
+                  <td>cgroup manipulation (<code>memory.high</code>, <code>cpu.max</code>). XDP program attachment.</td>
+                </tr>
+                <tr>
+                  <td><strong>5</strong></td>
+                  <td><code>CAP_BPF</code>, <code>CAP_SYS_ADMIN</code>, <code>CAP_NET_ADMIN</code></td>
+                  <td>Network interface manipulation. In Kubernetes mode: API access for taint application.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            An operator who wants detection-only (Levels 0–1) without any actuation can
+            deploy HOSA with only <code>CAP_BPF</code> — the agent will detect, log, and
+            notify but never intervene. This is the recommended starting configuration for
+            evaluation deployments.
+          </p>
+        </section>
+
+        <!-- ======================== 15. LIMITATIONS ======================== -->
+        <section id="limitations">
+          <h2><span class="heading-number">15.</span> Known Limitations</h2>
+
+          <ol class="doc-list doc-list-numbered">
+            <li>
+              <strong>Throttling side effects.</strong> Despite the safelist and contributor
+              targeting mechanisms, throttling a process during a critical section (holding a
+              database lock, mid-write to disk) can cause secondary failures. The experimental
+              phase will quantify these side effects under controlled conditions.
+            </li>
+            <li>
+              <strong>XDP compatibility.</strong> XDP requires driver support. Not all
+              network drivers support XDP in native mode — some fall back to generic mode
+              (SKB-based), which offers less performance benefit. The agent gracefully
+              degrades: if native XDP is unavailable, it falls back to generic XDP; if
+              generic XDP is unavailable, network-level load shedding is disabled and only
+              cgroup-based containment is available.
+            </li>
+            <li>
+              <strong>Level 5 irreversibility.</strong> The manual recovery requirement for
+              Level 5 means that in environments without accessible operators (remote IoT
+              without physical access and no watchdog), a quarantined node may remain
+              isolated indefinitely. The watchdog timer mechanism (§9.4) mitigates but does
+              not fully solve this in all scenarios.
+            </li>
+            <li>
+              <strong>Threshold calibration sensitivity.</strong> The adaptive thresholds
+              (θ₁–θ₄) depend on the quality of the warm-up phase baseline. A warm-up
+              period that coincides with atypical system behavior (ongoing deployment, burst
+              workload) will produce suboptimal thresholds. The experimental phase will
+              quantify threshold sensitivity under various warm-up conditions.
+            </li>
+            <li>
+              <strong>Multi-tenant interference.</strong> In shared environments (multiple
+              pods on the same node), throttling one process can indirectly affect others
+              through shared resources (CPU cache, memory bus, I/O scheduler). The
+              decomposition identifies the dominant contributor, but the containment action
+              may have second-order effects on co-located workloads.
+            </li>
+          </ol>
+        </section>
+
+        <!-- ======================== REFERENCES ======================== -->
+        <section id="references">
+          <h2><span class="heading-number">16.</span> References</h2>
+
+          <ol class="doc-references">
+            <li id="ref-heo">
+              Heo, T. (2015). Control Group v2.
+              <em>Linux Kernel Documentation</em>.
+              <a href="https://www.kernel.org/doc/Documentation/cgroup-v2.txt" target="_blank" rel="noopener">kernel.org</a>
+            </li>
+            <li id="ref-vieira">
+              Vieira, M. A., Castanho, M. S., Pacífico, R. D. G., Santos, E. R. S.,
+              Júnior, E. P. M. C., &amp; Vieira, L. F. M. (2020). Fast Packet Processing
+              with eBPF and XDP: Concepts, Code, Challenges, and Applications.
+              <em>ACM Computing Surveys</em>, 53(1), Article 16.
+            </li>
+            <li id="ref-gregg">
+              Gregg, B. (2019). <em>BPF Performance Tools: Linux System and Application
+              Observability</em>. Addison-Wesley Professional.
+            </li>
+            <li id="ref-horn">
+              Horn, P. (2001). Autonomic Computing: IBM's Perspective on the State of
+              Information Technology. <em>IBM Corporation</em>.
+            </li>
+            <li id="ref-bear">
+              Bear, M. F., Connors, B. W., &amp; Paradiso, M. A. (2015).
+              <em>Neuroscience: Exploring the Brain</em> (4th ed.). Wolters Kluwer.
+            </li>
+            <li id="ref-beyer">
+              Beyer, B., Jones, C., Petoff, J., &amp; Murphy, N. R. (2016).
+              <em>Site Reliability Engineering: How Google Runs Production Systems</em>.
+              O'Reilly Media.
+            </li>
+            <li id="ref-poettering">
+              Poettering, L. (2020). systemd-oomd: A userspace out-of-memory (OOM) killer.
+              <em>systemd Documentation</em>.
+            </li>
+            <li id="ref-weiner">
+              Weiner, J. (2018). PSI — Pressure Stall Information.
+              <em>Linux Kernel Documentation</em>.
+              <a href="https://www.kernel.org/doc/html/latest/accounting/psi.html" target="_blank" rel="noopener">kernel.org</a>
+            </li>
+            <li id="ref-tang">
+              Tang, C., et al. (2020). FBAR: Facebook's Automated Remediation System.
+              <em>Proceedings of the ACM Symposium on Cloud Computing (SoCC)</em>.
+            </li>
+          </ol>
+        </section>
+
+      </article>
+
+      <!-- Doc Navigation -->
+      <nav class="doc-nav-footer">
+        <div class="doc-nav-prev">
+          <a href="math-model.html">
+            <span class="doc-nav-label">Previous</span>
+            <span class="doc-nav-title">← §3 Mathematical Model</span>
+          </a>
+        </div>
+        <div class="doc-nav-next">
+          <a href="habituation.html">
+            <span class="doc-nav-label">Next</span>
+            <span class="doc-nav-title">§5 Habituation →</span>
+          </a>
+        </div>
+      </nav>
+
+    </div>
+  </main>
+
+  <!-- ======================== FOOTER ======================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-left">
+          <strong>HOSA</strong> — Homeostasis Operating System Agent
+          <p>Research project · IMECC/Unicamp · GPL-3.0</p>
+        </div>
+        <ul class="footer-links">
+          <li><a href="https://github.com/bricio-sr/hosa" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="whitepaper.pdf">Whitepaper</a></li>
+          <li><a href="/docs/">Documentation</a></li>
+        </ul>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 Fabricio Roney de Amorim. Licensed under GPL-3.0.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('navToggle').addEventListener('click', function () {
+      const nav = document.getElementById('navLinks');
+      const expanded = this.getAttribute('aria-expanded') === 'true';
+      nav.classList.toggle('open');
+      this.setAttribute('aria-expanded', !expanded);
+    });
+  </script>
+</body>
+</html>

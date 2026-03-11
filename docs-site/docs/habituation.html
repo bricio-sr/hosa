@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Habituation — HOSA Documentation</title>
+  <meta name="description" content="Adaptive baseline recalibration, formal pre-conditions, seasonal profiles (digital circadian rhythm), safety guards against premature habituation, and interaction with the regime spectrum." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/docs.css" />
+</head>
+<body>
+
+  <!-- ======================== NAVIGATION ======================== -->
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="container">
+      <a href="/" class="nav-brand">
+        <span class="brand-mark">H</span>
+        HOSA
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="/">Overview</a></li>
+        <li><a href="/#motivation">Motivation</a></li>
+        <li><a href="/#architecture">Architecture</a></li>
+        <li class="active"><a href="/docs/">Documentation</a></li>
+      </ul>
+      <div class="nav-right">
+        <div class="lang-switch">
+          <a href="/docs/habituation.html" class="active">EN</a>
+          <a href="/ptBr/docs/habituation.html">PT</a>
+        </div>
+        <a href="https://github.com/bricio-sr/hosa" class="nav-github" aria-label="GitHub Repository" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ======================== DOC HEADER ======================== -->
+  <header class="doc-header">
+    <div class="container container-narrow">
+      <nav class="doc-breadcrumb" aria-label="Breadcrumb">
+        <a href="/">HOSA</a>
+        <span class="bc-sep">/</span>
+        <a href="/docs/">Documentation</a>
+        <span class="bc-sep">/</span>
+        <span class="bc-current">Habituation</span>
+      </nav>
+      <div class="doc-title-block">
+        <span class="doc-section-number">§5</span>
+        <h1>Habituation</h1>
+      </div>
+      <p class="doc-subtitle">
+        Adaptive baseline recalibration inspired by neuroplasticity,
+        formal pre-conditions, seasonal profiles (the digital circadian rhythm),
+        safety guards, and the principle of never normalizing pathology.
+      </p>
+      <div class="doc-meta">
+        <span>Based on Whitepaper v2.1 — Sections 5.5, 6.6 &amp; 6.12</span>
+        <span class="doc-meta-sep">·</span>
+        <span>~20 min read</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================== DOC BODY ======================== -->
+  <main class="doc-main">
+    <div class="container container-narrow">
+
+      <!-- Table of Contents -->
+      <aside class="doc-toc">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#the-problem">The False Positive Problem</a></li>
+          <li><a href="#biological-inspiration">Biological Inspiration — Neuroplasticity</a></li>
+          <li><a href="#mechanism">Mechanism — Weighted Welford Decay</a>
+            <ol>
+              <li><a href="#exponential-decay">Exponential Decay of Historical Weights</a></li>
+              <li><a href="#recalibration-process">The Recalibration Process</a></li>
+            </ol>
+          </li>
+          <li><a href="#formal-preconditions">Formal Pre-Conditions</a></li>
+          <li><a href="#regime-interaction">Habituation Across the Regime Spectrum</a>
+            <ol>
+              <li><a href="#permitted-regimes">Permitted Regimes (−2 to +2)</a></li>
+              <li><a href="#blocked-regimes">Blocked Regimes (−3, +3 to +5)</a></li>
+              <li><a href="#symmetry-principle">The Symmetry Principle</a></li>
+            </ol>
+          </li>
+          <li><a href="#seasonal-profiles">Seasonal Profiles — The Digital Circadian Rhythm</a>
+            <ol>
+              <li><a href="#autocorrelation">Periodicity Detection via Autocorrelation</a></li>
+              <li><a href="#temporal-segmentation">Temporal Segmentation</a></li>
+              <li><a href="#per-segment-baselines">Per-Segment Baseline Accumulation</a></li>
+              <li><a href="#contextual-dm">Context-Indexed D<sub>M</sub> Calculation</a></li>
+            </ol>
+          </li>
+          <li><a href="#safety-guards">Safety Guards Against Premature Habituation</a>
+            <ol>
+              <li><a href="#guard-covariance">Covariance Preservation</a></li>
+              <li><a href="#guard-syscalls">Syscall Stability</a></li>
+              <li><a href="#guard-propagation">Propagation Absence</a></li>
+              <li><a href="#guard-plateau">Safety Plateau</a></li>
+              <li><a href="#guard-temporal">Temporal Coherence</a></li>
+            </ol>
+          </li>
+          <li><a href="#decision-flow">The Habituation Decision Flow</a></li>
+          <li><a href="#walkthrough">Walkthrough: Deploy with Higher Memory Footprint</a></li>
+          <li><a href="#limitations">Known Limitations</a></li>
+          <li><a href="#references">References</a></li>
+        </ol>
+      </aside>
+
+      <!-- Content -->
+      <article class="doc-content">
+
+        <!-- ======================== 1. THE PROBLEM ======================== -->
+        <section id="the-problem">
+          <h2><span class="heading-number">1.</span> The False Positive Problem</h2>
+
+          <p>
+            A recurring problem in anomaly detection systems is <strong>chronic false
+            positive fatigue</strong>: when the legitimate workload changes permanently —
+            a new version is deployed that consumes more memory, a microservice is migrated
+            to the node, the user base grows organically — the detector continues signaling
+            anomaly <em>indefinitely</em>, because the current state deviates from a
+            baseline that no longer represents reality.
+          </p>
+
+          <div class="doc-comparison">
+            <div class="doc-comparison-col">
+              <h4>Without Habituation</h4>
+              <ul class="doc-list doc-list-plain">
+                <li>Deploy v2.0 uses 20% more memory</li>
+                <li>D<sub>M</sub> rises and stays elevated</li>
+                <li>Alert fires — operator investigates</li>
+                <li>"It's the new version, ignore it"</li>
+                <li>Alert fires again tomorrow…</li>
+                <li>Operator silences the alert</li>
+                <li>Real anomaly occurs — nobody notices</li>
+                <li><em>→ Alert fatigue → missed incident</em></li>
+              </ul>
+            </div>
+            <div class="doc-comparison-col">
+              <h4>With Habituation</h4>
+              <ul class="doc-list doc-list-plain">
+                <li>Deploy v2.0 uses 20% more memory</li>
+                <li>D<sub>M</sub> rises and stays elevated</li>
+                <li>HOSA detects stable plateau</li>
+                <li>Pre-conditions verified (30 min)</li>
+                <li>Baseline recalibrated to new normal</li>
+                <li>D<sub>M</sub> returns to low values</li>
+                <li>Real anomaly → immediately detected</li>
+                <li><em>→ Zero alert fatigue → full sensitivity</em></li>
+              </ul>
+            </div>
+          </div>
+
+          <p>
+            The challenge is distinguishing between two superficially identical states:
+          </p>
+
+          <ul class="doc-list">
+            <li>
+              <strong>Legitimate plateau shift</strong> — the workload genuinely changed,
+              the system is healthy at its new operating point, and the baseline should be
+              updated (Regime +1).
+            </li>
+            <li>
+              <strong>Pathological stabilization</strong> — an attacker has established
+              persistent presence and is consuming resources at a steady rate, or a
+              progressive failure has reached a plateau just before collapse (Regime +3
+              or +4).
+            </li>
+          </ul>
+
+          <p>
+            Both produce the same signature: elevated D<sub>M</sub> with derivative near
+            zero. The difference lies in the <strong>structural indicators</strong> — the
+            covariance structure, the syscall distribution, the propagation index — which
+            distinguish benign change from pathology. These indicators form the
+            <strong>formal pre-conditions</strong> for habituation.
+          </p>
+        </section>
+
+        <!-- ======================== 2. BIOLOGICAL INSPIRATION ======================== -->
+        <section id="biological-inspiration">
+          <h2><span class="heading-number">2.</span> Biological Inspiration — Neuroplasticity</h2>
+
+          <p>
+            In neuroscience, <strong>habituation</strong> is the simplest form of
+            non-associative learning: a decrease in response to a stimulus that is
+            repeatedly presented without reinforcement
+            <a href="#ref-kandel" class="ref-link">[1]</a>. When you put on a watch,
+            you feel it on your wrist for a few minutes. Then the sensation fades — not
+            because the watch was removed, but because your nervous system learned that the
+            stimulus is persistent, non-threatening, and can be safely ignored.
+          </p>
+
+          <p>
+            The biological mechanism is <strong>synaptic depression</strong>: repeated
+            activation of the same sensory pathway reduces the synaptic transmission
+            efficiency, effectively raising the threshold for that stimulus. Critically,
+            habituation is <em>stimulus-specific</em>: habituating to the watch on your
+            wrist does not reduce sensitivity to a bee sting on the same wrist.
+          </p>
+
+          <p>
+            HOSA's habituation mechanism mirrors these properties:
+          </p>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr><th>Biological Property</th><th>HOSA Implementation</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Repeated, non-threatening stimulus</strong></td>
+                  <td>Elevated D<sub>M</sub> with derivative ≈ 0 for sustained period, no system failures (no OOM, no crash, no timeout)</td>
+                </tr>
+                <tr>
+                  <td><strong>Specificity</strong></td>
+                  <td>Habituation recalibrates μ and Σ — sensitivity to <em>new</em> deviations from the updated baseline is fully preserved</td>
+                </tr>
+                <tr>
+                  <td><strong>Dishabituation</strong></td>
+                  <td>If a novel stimulus appears (covariance deformation, syscall entropy shift), habituation is blocked and full sensitivity is restored</td>
+                </tr>
+                <tr>
+                  <td><strong>Context-dependence</strong></td>
+                  <td>Habituation can occur within a specific temporal segment without affecting other segments (seasonal profiles)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="doc-blockquote">
+            <p>
+              "HOSA adapts to legitimate variation but refuses to normalize pathology.
+              The distinction is not philosophical — it is mathematical: pathology deforms
+              the covariance structure; legitimate change preserves it."
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 3. MECHANISM ======================== -->
+        <section id="mechanism">
+          <h2><span class="heading-number">3.</span> Mechanism — Weighted Welford Decay</h2>
+
+          <section id="exponential-decay">
+            <h3><span class="heading-number">3.1.</span> Exponential Decay of Historical Weights</h3>
+
+            <p>
+              HOSA's standard baseline accumulation uses the Welford algorithm (see
+              <a href="math-model.html#welford">§3 — Welford</a>), which treats all
+              historical samples with equal weight. For habituation, HOSA switches to a
+              <strong>weighted variant</strong> that applies exponential decay to older
+              samples:
+            </p>
+
+            <div class="doc-formula">
+              <div class="doc-formula-content">
+                w(t, τ) = e<sup>−λ(t − τ)</sup>
+              </div>
+              <div class="doc-formula-label">Equation 1 — Exponential Decay Weight</div>
+            </div>
+
+            <p>Where:</p>
+
+            <ul class="doc-list">
+              <li><strong>t</strong> — current time</li>
+              <li><strong>τ</strong> — time at which the sample was collected</li>
+              <li><strong>λ</strong> — decay rate, controlling how quickly old samples lose
+                influence (higher λ = faster adaptation, lower λ = more conservative)</li>
+            </ul>
+
+            <p>
+              The effect is that recent samples receive progressively more weight in the
+              computation of μ and Σ, while older samples (from the pre-change baseline)
+              gradually lose influence. The baseline <em>drifts</em> toward the new
+              operating point over a configurable time horizon.
+            </p>
+          </section>
+
+          <section id="recalibration-process">
+            <h3><span class="heading-number">3.2.</span> The Recalibration Process</h3>
+
+            <p>
+              Habituation is not an instantaneous event — it is a <strong>gradual
+              process</strong> that unfolds over the stabilization period:
+            </p>
+
+            <ol class="doc-list doc-list-numbered">
+              <li>
+                <strong>Detection of stability.</strong> HOSA detects that D<sub>M</sub>
+                has been elevated but stable (|dD̄<sub>M</sub>/dt| &lt; ε<sub>d</sub>) for
+                a sustained period.
+              </li>
+              <li>
+                <strong>Pre-condition verification.</strong> All formal pre-conditions
+                (§4) are checked continuously. If any pre-condition fails, the habituation
+                timer resets.
+              </li>
+              <li>
+                <strong>Weighted accumulation begins.</strong> Once the minimum
+                stabilization time T<sub>min</sub> (default: 30 minutes) is reached with
+                all pre-conditions continuously satisfied, HOSA activates exponential
+                decay weighting on the Welford accumulators.
+              </li>
+              <li>
+                <strong>Gradual convergence.</strong> Over the next decay period
+                (typically 2–3× the half-life = ln(2)/λ), the baseline μ and Σ converge
+                toward the statistics of the new operating regime.
+              </li>
+              <li>
+                <strong>Completion.</strong> When D<sub>M</sub> computed against the
+                updated baseline drops below θ₁, the recalibration is considered complete.
+                The new baseline is the baseline. Normal Welford (equal-weight) accumulation
+                resumes.
+              </li>
+            </ol>
+
+            <div class="doc-callout doc-callout-info">
+              <div class="doc-callout-title">Memory Footprint</div>
+              <p>
+                The weighted Welford variant maintains the same O(n²) memory footprint as
+                the standard algorithm. No data windows are stored — only the running
+                weighted mean, weighted co-moment matrix, and effective sample count are
+                maintained. For n = 10 dimensions, the entire habituation state occupies
+                approximately 900 bytes.
+              </p>
+            </div>
+          </section>
+        </section>
+
+        <!-- ======================== 4. FORMAL PRE-CONDITIONS ======================== -->
+        <section id="formal-preconditions">
+          <h2><span class="heading-number">4.</span> Formal Pre-Conditions</h2>
+
+          <p>
+            Baseline recalibration is permitted <strong>if and only if all</strong> of the
+            following conditions are satisfied <strong>simultaneously and
+            continuously</strong> for the entire stabilization period:
+          </p>
+
+          <div class="doc-formula">
+            <div class="doc-formula-content">
+              Habituation ⟺<br/><br/>
+              &nbsp;&nbsp;|dD̄<sub>M</sub>/dt| &lt; ε<sub>d</sub> &nbsp;&nbsp;&nbsp; <em>(stabilization — derivative near zero)</em><br/>
+              ∧ ρ(t) &lt; ρ<sub>threshold</sub> &nbsp;&nbsp;&nbsp; <em>(covariance structure preserved)</em><br/>
+              ∧ ΔH(t) &lt; ΔH<sub>threshold</sub> &nbsp;&nbsp;&nbsp; <em>(syscall distribution stable)</em><br/>
+              ∧ ICP(t) &lt; ICP<sub>threshold</sub> &nbsp;&nbsp;&nbsp; <em>(no propagation behavior)</em><br/>
+              ∧ D<sub>M</sub>(t) &lt; D<sub>M,safety</sub> &nbsp;&nbsp;&nbsp; <em>(plateau below safety ceiling)</em><br/>
+              ∧ t<sub>stable</sub> &gt; T<sub>min</sub> &nbsp;&nbsp;&nbsp; <em>(sustained stabilization, default: 30 min)</em><br/>
+              ∧ temporal coherence of φ(t) &nbsp;&nbsp;&nbsp; <em>(if φ &lt; 0, coherent with seasonal profile)</em>
+            </div>
+            <div class="doc-formula-label">Equation 2 — Habituation Pre-Conditions (conjunction)</div>
+          </div>
+
+          <p>
+            Each pre-condition addresses a specific failure mode of naïve habituation:
+          </p>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr><th>Pre-Condition</th><th>Failure Mode Prevented</th><th>Metric</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Stabilization</strong></td>
+                  <td>Habituating to a still-growing anomaly (memory leak that hasn't yet reached plateau)</td>
+                  <td>|dD̄<sub>M</sub>/dt| &lt; ε<sub>d</sub></td>
+                </tr>
+                <tr>
+                  <td><strong>Covariance preserved</strong></td>
+                  <td>Habituating to adversarial activity that deforms the correlation structure (cryptominer, DDoS)</td>
+                  <td>ρ(t) &lt; ρ<sub>threshold</sub></td>
+                </tr>
+                <tr>
+                  <td><strong>Syscalls stable</strong></td>
+                  <td>Habituating to a compromised process that has altered the system call profile</td>
+                  <td>ΔH(t) &lt; ΔH<sub>threshold</sub></td>
+                </tr>
+                <tr>
+                  <td><strong>No propagation</strong></td>
+                  <td>Habituating to a worm or lateral movement that has established steady-state propagation</td>
+                  <td>ICP(t) &lt; ICP<sub>threshold</sub></td>
+                </tr>
+                <tr>
+                  <td><strong>Safety plateau</strong></td>
+                  <td>Habituating to a state dangerously close to resource exhaustion (92% memory is not a "new normal")</td>
+                  <td>D<sub>M</sub>(t) &lt; D<sub>M,safety</sub></td>
+                </tr>
+                <tr>
+                  <td><strong>Sustained</strong></td>
+                  <td>Habituating to a transient spike that happens to be briefly stable</td>
+                  <td>t<sub>stable</sub> &gt; T<sub>min</sub></td>
+                </tr>
+                <tr>
+                  <td><strong>Temporal coherence</strong></td>
+                  <td>Habituating to anomalous silence (Regime −3) by misclassifying it as idleness</td>
+                  <td>φ(t) coherent with seasonal profile</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            If <strong>any single</strong> pre-condition fails at any point during the
+            stabilization period, the habituation timer <strong>resets to zero</strong>.
+            The process must restart from the beginning, with all conditions continuously
+            satisfied for the full T<sub>min</sub> duration.
+          </p>
+
+          <div class="doc-callout doc-callout-critical">
+            <div class="doc-callout-title">The Conjunction is Non-Negotiable</div>
+            <p>
+              The conjunction (∧) of all pre-conditions is a deliberate design decision.
+              A system where covariance is preserved but the propagation index is elevated
+              must not habituate — the preserved covariance might be coincidental while the
+              propagation behavior represents a real threat. The bar for habituation is
+              intentionally high: all indicators must simultaneously confirm that the
+              deviation is benign.
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 5. REGIME INTERACTION ======================== -->
+        <section id="regime-interaction">
+          <h2><span class="heading-number">5.</span> Habituation Across the Regime Spectrum</h2>
+
+          <p>
+            The interaction between regimes and habituation follows a symmetric pattern
+            centered on homeostasis: habituation is permitted in the <strong>central
+            regimes</strong> and blocked at the <strong>extremes</strong>.
+          </p>
+
+          <section id="permitted-regimes">
+            <h3><span class="heading-number">5.1.</span> Permitted Regimes (−2 to +2)</h3>
+
+            <div class="doc-table-wrap">
+              <table class="doc-table">
+                <thead>
+                  <tr><th>Regime</th><th>Habituation Policy</th><th>Rationale</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>−2</strong> Structural Idleness</td>
+                    <td>Permitted (with persistent FinOps flag)</td>
+                    <td>The node is permanently over-provisioned. Habituating eliminates false positives from chronic low utilization. However, the FinOps signaling <strong>remains active</strong> — HOSA stops alerting but continues reporting the waste.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>−1</strong> Legitimate Idleness</td>
+                    <td>Incorporated into seasonal profiles</td>
+                    <td>Nighttime idleness is not an anomaly — it is the normalcy of that temporal segment. Each segment accumulates its own baseline.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>0</strong> Homeostasis</td>
+                    <td>N/A (is the baseline)</td>
+                    <td>No habituation needed — this is the reference state.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>+1</strong> Plateau Shift</td>
+                    <td>Permitted if all pre-conditions satisfied</td>
+                    <td>This is the <strong>primary use case</strong> for habituation. A new deploy or organic growth has shifted the operating point. The system is stable, healthy, and the covariance structure is preserved.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>+2</strong> Seasonality</td>
+                    <td>Intra-segment</td>
+                    <td>Habituation occurs <em>within</em> each temporal segment, not globally. The Monday-morning peak has its own baseline; the Saturday-night valley has its own baseline.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="blocked-regimes">
+            <h3><span class="heading-number">5.2.</span> Blocked Regimes (−3, +3 to +5)</h3>
+
+            <div class="doc-table-wrap">
+              <table class="doc-table">
+                <thead>
+                  <tr><th>Regime</th><th>Habituation Policy</th><th>Rationale</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>−3</strong> Anomalous Silence</td>
+                    <td><strong>Blocked</strong></td>
+                    <td>A server that should be active and isn't represents a potential failure or compromise. HOSA does not adapt to unexplained silence.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>+3</strong> Adversarial</td>
+                    <td><strong>Blocked</strong></td>
+                    <td>The covariance deformation ratio ρ(t) exceeds the threshold. The structural fingerprint of the system has been altered. An attacker who establishes persistent presence must <strong>never</strong> be able to "train" the detector into accepting the intrusion as normal.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>+4</strong> Local Failure</td>
+                    <td><strong>Blocked</strong> while derivative positive</td>
+                    <td>A monotonically growing anomaly (memory leak, disk degradation) is a progressive failure, not a new normal. Habituation is only considered if the failure stabilizes and the system transitions to Regime +1.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>+5</strong> Viral Propagation</td>
+                    <td><strong>Categorically blocked</strong></td>
+                    <td>Propagation behavior (ICP &gt; threshold) indicates active threat to other nodes. HOSA never habituates to propagation patterns, regardless of stability or duration.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="symmetry-principle">
+            <h3><span class="heading-number">5.3.</span> The Symmetry Principle</h3>
+
+            <div class="doc-diagram">
+              <div class="doc-diagram-title">
+                <span class="figure-number">Figure 1</span>
+                Habituation policy across the bipolar spectrum
+              </div>
+              <div class="doc-diagram-content">
+                <div class="doc-spectrum">
+                  <div class="doc-spectrum-bar">
+                    <div class="doc-spectrum-labels">
+                      <span class="ds-label ds-pos">−3</span>
+                      <span class="ds-label ds-neg">−2</span>
+                      <span class="ds-label ds-neg">−1</span>
+                      <span class="ds-label ds-zero">0</span>
+                      <span class="ds-label ds-neg">+1</span>
+                      <span class="ds-label ds-neg">+2</span>
+                      <span class="ds-label ds-pos">+3</span>
+                      <span class="ds-label ds-pos">+4</span>
+                      <span class="ds-label ds-pos">+5</span>
+                    </div>
+                    <div class="doc-spectrum-names">
+                      <span>BLOCKED</span>
+                      <span>Permitted</span>
+                      <span>Seasonal</span>
+                      <span>Baseline</span>
+                      <span>Permitted</span>
+                      <span>Intra-seg</span>
+                      <span>BLOCKED</span>
+                      <span>BLOCKED</span>
+                      <span>BLOCKED</span>
+                    </div>
+                  </div>
+                  <div class="doc-spectrum-axes">
+                    <span class="ds-axis-left">← Pathological extremes</span>
+                    <span class="ds-axis-center">ADAPTS</span>
+                    <span class="ds-axis-right">Pathological extremes →</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <p>
+              The pattern is symmetric: HOSA <strong>adapts to legitimate variation</strong>
+              in the center of the spectrum but <strong>refuses to normalize
+              pathology</strong> at the extremes. This reflects a fundamental principle:
+              homeostasis is bidirectional equilibrium, not passive acceptance of any
+              steady state.
+            </p>
+          </section>
+        </section>
+
+        <!-- ======================== 6. SEASONAL PROFILES ======================== -->
+        <section id="seasonal-profiles">
+          <h2><span class="heading-number">6.</span> Seasonal Profiles — The Digital Circadian Rhythm</h2>
+
+          <p>
+            Many workloads exhibit <strong>periodic temporal patterns</strong>: daily peaks
+            and valleys, weekday/weekend differences, monthly cycles (payroll, accounting
+            close), or annual events (Black Friday, holiday season). If HOSA operates with
+            a single global baseline, these predictable variations are misclassified as
+            anomalies — the morning peak triggers Level 1 every day, the overnight valley
+            triggers sub-demand alerts every night.
+          </p>
+
+          <p>
+            HOSA solves this with <strong>temporal segmentation of the baseline</strong>:
+            instead of maintaining a single (μ, Σ) pair, the agent maintains N baseline
+            profiles indexed by temporal context — a <em>digital circadian rhythm</em>.
+          </p>
+
+          <section id="autocorrelation">
+            <h3><span class="heading-number">6.1.</span> Periodicity Detection via Autocorrelation</h3>
+
+            <p>
+              The segmentation is determined <strong>automatically</strong> during the first
+              weeks of operation through analysis of the autocorrelation function (ACF) of
+              the D<sub>M</sub> time series:
+            </p>
+
+            <ol class="doc-list doc-list-numbered">
+              <li>
+                HOSA accumulates the D<sub>M</sub>(t) series for a minimum observation
+                period (configurable, default: 7 days to detect weekly cycles).
+              </li>
+              <li>
+                Computes the autocorrelation function ACF(τ) for the accumulated series.
+              </li>
+              <li>
+                Identifies lags τ with <strong>statistically significant autocorrelation
+                peaks</strong> (above a significance threshold derived from the series
+                length).
+              </li>
+              <li>
+                If a peak at lag = 24h is detected → daily cycle. If peak at lag = 168h →
+                weekly cycle. Both may be present simultaneously.
+              </li>
+              <li>
+                Segments the baseline profiles ℬ automatically into temporal windows
+                corresponding to the detected periodicities.
+              </li>
+            </ol>
+          </section>
+
+          <section id="temporal-segmentation">
+            <h3><span class="heading-number">6.2.</span> Temporal Segmentation</h3>
+
+            <p>
+              The set of baseline profiles is formalized as:
+            </p>
+
+            <div class="doc-formula">
+              <div class="doc-formula-content">
+                ℬ = { (μ<sub>i</sub>, Σ<sub>i</sub>, w<sub>i</sub>) | i = 1, 2, …, N }
+              </div>
+              <div class="doc-formula-label">Equation 3 — Set of Temporal Baseline Profiles</div>
+            </div>
+
+            <p>
+              where w<sub>i</sub> represents the temporal window associated with profile
+              i (e.g., "Monday–Friday, 08:00–12:00" or "Saturday, 00:00–08:00").
+            </p>
+
+            <p>
+              A typical server with daily and weekly patterns might produce:
+            </p>
+
+            <div class="doc-table-wrap">
+              <table class="doc-table doc-table-compact">
+                <thead>
+                  <tr><th>Segment</th><th>Window</th><th>Expected Behavior</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>1</td><td>Mon–Fri 08:00–12:00</td><td>Morning peak — highest baseline</td></tr>
+                  <tr><td>2</td><td>Mon–Fri 12:00–14:00</td><td>Lunch dip — moderate baseline</td></tr>
+                  <tr><td>3</td><td>Mon–Fri 14:00–18:00</td><td>Afternoon activity — high baseline</td></tr>
+                  <tr><td>4</td><td>Mon–Fri 18:00–08:00</td><td>Overnight — low baseline</td></tr>
+                  <tr><td>5</td><td>Sat–Sun 00:00–24:00</td><td>Weekend — minimal activity</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p>
+              Each segment accumulates its <strong>own independent</strong> μ<sub>i</sub>
+              and Σ<sub>i</sub> via its own Welford accumulator.
+            </p>
+          </section>
+
+          <section id="per-segment-baselines">
+            <h3><span class="heading-number">6.3.</span> Per-Segment Baseline Accumulation</h3>
+
+            <p>
+              When a new sample x(t) arrives, HOSA routes it to the Welford accumulator of
+              the <strong>currently active temporal segment</strong> i(t). Only that
+              segment's baseline is updated. This means:
+            </p>
+
+            <ul class="doc-list">
+              <li>The Monday-morning baseline is only updated with Monday-morning data</li>
+              <li>The weekend baseline is only updated with weekend data</li>
+              <li>A permanent increase in Monday traffic recalibrates the Monday profile <em>without affecting the weekend profile</em></li>
+            </ul>
+          </section>
+
+          <section id="contextual-dm">
+            <h3><span class="heading-number">6.4.</span> Context-Indexed D<sub>M</sub> Calculation</h3>
+
+            <p>
+              At each instant t, the Mahalanobis Distance is calculated against the
+              <strong>contextually appropriate baseline</strong>:
+            </p>
+
+            <div class="doc-formula">
+              <div class="doc-formula-content">
+                D<sub>M</sub>(t) = √[ (x(t) − μ<sub>i(t)</sub>)ᵀ · Σ<sub>i(t)</sub>⁻¹ · (x(t) − μ<sub>i(t)</sub>) ]
+              </div>
+              <div class="doc-formula-label">Equation 4 — Context-Indexed Mahalanobis Distance</div>
+            </div>
+
+            <p>
+              where i(t) is the index of the active baseline profile for time t.
+            </p>
+
+            <p>
+              <strong>Practical implication:</strong> The 09:00 Monday peak is compared
+              against the "Monday 08:00–12:00" baseline — not against the "Sunday 03:00"
+              baseline. This eliminates seasonal false positives without sacrificing
+              detection sensitivity.
+            </p>
+
+            <div class="doc-callout doc-callout-note">
+              <div class="doc-callout-title">Benefits to the Negative Semi-Axis</div>
+              <p>
+                Temporal segmentation equally benefits sub-demand detection. The overnight
+                valley accumulates its own low-activity baseline, allowing Regime −3
+                (Anomalous Silence) to be detected precisely when activity drops below what
+                is expected <em>for that specific time window</em>. A drop at 03:00 is
+                coherent with the overnight profile (Regime −1). The same drop at 10:00 on
+                a Tuesday is incoherent (Regime −3).
+              </p>
+            </div>
+          </section>
+        </section>
+
+        <!-- ======================== 7. SAFETY GUARDS ======================== -->
+        <section id="safety-guards">
+          <h2><span class="heading-number">7.</span> Safety Guards Against Premature Habituation</h2>
+
+          <p>
+            Each formal pre-condition in the conjunction (Equation 2) functions as an
+            independent <strong>safety guard</strong> against a specific class of premature
+            or dangerous habituation. This section details the mechanism and rationale for
+            each guard.
+          </p>
+
+          <section id="guard-covariance">
+            <h3><span class="heading-number">7.1.</span> Covariance Preservation (ρ)</h3>
+
+            <p>
+              The Covariance Deformation Ratio ρ(t) measures whether the
+              <strong>correlation structure</strong> between variables has changed — not
+              just the magnitude of the variables:
+            </p>
+
+            <div class="doc-formula">
+              <div class="doc-formula-content">
+                ρ(t) = ‖Σ<sub>recent</sub> − Σ<sub>baseline</sub>‖<sub>F</sub> / ‖Σ<sub>baseline</sub>‖<sub>F</sub>
+              </div>
+              <div class="doc-formula-label">Equation 5 — Covariance Deformation Ratio</div>
+            </div>
+
+            <p>
+              <strong>Why this matters:</strong> A legitimate workload change (deploy v2.0
+              uses more memory) typically <strong>scales</strong> the covariance ellipsoid
+              without deforming it — CPU and memory continue to correlate in the same
+              direction, just at higher magnitude. An adversarial presence (cryptominer)
+              <strong>deforms</strong> the ellipsoid — CPU rises without corresponding
+              increases in application throughput, creating new correlations that don't exist
+              in the legitimate profile.
+            </p>
+
+            <p>
+              When ρ(t) &gt; ρ<sub>threshold</sub>, habituation is blocked regardless of
+              stability. The agent will not learn to accept a deformed correlation structure
+              as normal.
+            </p>
+          </section>
+
+          <section id="guard-syscalls">
+            <h3><span class="heading-number">7.2.</span> Syscall Stability (ΔH)</h3>
+
+            <p>
+              The change in Shannon entropy of the syscall distribution ΔH(t) detects
+              whether the <strong>behavioral fingerprint</strong> of the system has changed
+              at the kernel interface level:
+            </p>
+
+            <div class="doc-formula">
+              <div class="doc-formula-content">
+                ΔH(t) = |H(S, t) − H<sub>baseline</sub>|
+                <br/><br/>
+                <em>where H(S, t) = −Σ pᵢ(t) log₂ pᵢ(t)</em>
+              </div>
+              <div class="doc-formula-label">Equation 6 — Syscall Entropy Change</div>
+            </div>
+
+            <p>
+              A legitimate workload change may alter resource consumption levels but
+              typically preserves the <em>type</em> of operations — the same syscalls are
+              called, just more frequently. Malicious activity often introduces new syscall
+              patterns: <code>connect()</code> and <code>sendto()</code> for exfiltration,
+              <code>mmap()</code> for cryptomining, <code>fork()</code>/<code>exec()</code>
+              for propagation.
+            </p>
+          </section>
+
+          <section id="guard-propagation">
+            <h3><span class="heading-number">7.3.</span> Propagation Absence (ICP)</h3>
+
+            <p>
+              The Propagation Behavior Index ICP(t) (see
+              <a href="math-model.html#supplementary-metrics">§3 — Supplementary Metrics</a>)
+              aggregates indicators of outbound propagation: connection explosion, destination
+              entropy, anomalous forks, and correlation between D<sub>M</sub> and outbound
+              traffic. When ICP exceeds its threshold, habituation is
+              <strong>categorically blocked</strong>.
+            </p>
+
+            <p>
+              This guard is the most conservative: even if all other indicators appear
+              benign, a high ICP indicates the node may be spreading a problem to other
+              systems. Accepting this as the "new normal" would make HOSA complicit in the
+              propagation.
+            </p>
+          </section>
+
+          <section id="guard-plateau">
+            <h3><span class="heading-number">7.4.</span> Safety Plateau (D<sub>M,safety</sub>)</h3>
+
+            <p>
+              This guard prevents habituation to a state <strong>dangerously close to
+              resource exhaustion</strong>. Stabilizing at 92% memory utilization is not a
+              "new normal" — it is a system on the edge that has lost its safety margin.
+            </p>
+
+            <p>
+              D<sub>M,safety</sub> is set below θ₃ (the Active Containment threshold),
+              ensuring that HOSA will never habituate to a state that would trigger
+              containment if it were reached from homeostasis. The logic: if this state
+              requires active containment when approached from below, it should not be
+              accepted as baseline regardless of how long it persists.
+            </p>
+          </section>
+
+          <section id="guard-temporal">
+            <h3><span class="heading-number">7.5.</span> Temporal Coherence (φ direction)</h3>
+
+            <p>
+              When the Load Direction Index φ(t) is negative (sub-demand), habituation
+              requires that the idleness is <strong>coherent with the seasonal
+              profile</strong>. Low activity at 03:00 is coherent and can be incorporated
+              into the seasonal baseline. Low activity at 10:00 on a business day — when
+              the seasonal profile predicts peak — is incoherent and may indicate Regime −3
+              (Anomalous Silence).
+            </p>
+
+            <p>
+              This guard prevents the dangerous scenario where a failed upstream stops
+              sending traffic, the node becomes idle, and HOSA habituates to the silence,
+              effectively hiding the failure from detection.
+            </p>
+          </section>
+        </section>
+
+        <!-- ======================== 8. DECISION FLOW ======================== -->
+        <section id="decision-flow">
+          <h2><span class="heading-number">8.</span> The Habituation Decision Flow</h2>
+
+          <p>
+            The complete decision process, evaluated at each sample cycle:
+          </p>
+
+          <div class="doc-diagram">
+            <div class="doc-diagram-title">
+              <span class="figure-number">Figure 2</span>
+              Habituation decision flowchart
+            </div>
+            <div class="doc-diagram-content">
+              <div class="doc-diagram-vertical">
+                <div class="doc-diagram-box doc-diagram-hosa">
+                  <h5>1. Is D<sub>M</sub> elevated?</h5>
+                  <div class="doc-diagram-flow doc-diagram-flow-vertical">
+                    <div class="ddf-node">D<sub>M</sub> &gt; θ₁ ?<small>If NO → Level 0, no habituation needed</small></div>
+                  </div>
+                </div>
+
+                <div class="doc-diagram-bridge-vertical">
+                  <span class="ddf-arrow-v">↓</span>
+                  <span class="doc-diagram-bridge-label">YES</span>
+                </div>
+
+                <div class="doc-diagram-box doc-diagram-hosa">
+                  <h5>2. Is the derivative stable?</h5>
+                  <div class="doc-diagram-flow doc-diagram-flow-vertical">
+                    <div class="ddf-node">|dD̄<sub>M</sub>/dt| &lt; ε<sub>d</sub> ?<small>If NO → active anomaly, no habituation</small></div>
+                  </div>
+                </div>
+
+                <div class="doc-diagram-bridge-vertical">
+                  <span class="ddf-arrow-v">↓</span>
+                  <span class="doc-diagram-bridge-label">YES</span>
+                </div>
+
+                <div class="doc-diagram-box doc-diagram-hosa">
+                  <h5>3. All safety guards pass?</h5>
+                  <div class="doc-diagram-flow doc-diagram-flow-vertical">
+                    <div class="ddf-node">ρ &lt; threshold ∧ ΔH &lt; threshold ∧ ICP &lt; threshold ∧ D<sub>M</sub> &lt; safety ∧ temporal coherence?<small>If ANY fails → reset timer, no habituation</small></div>
+                  </div>
+                </div>
+
+                <div class="doc-diagram-bridge-vertical">
+                  <span class="ddf-arrow-v">↓</span>
+                  <span class="doc-diagram-bridge-label">ALL PASS</span>
+                </div>
+
+                <div class="doc-diagram-box doc-diagram-hosa">
+                  <h5>4. Sustained for T<sub>min</sub>?</h5>
+                  <div class="doc-diagram-flow doc-diagram-flow-vertical">
+                    <div class="ddf-node">t<sub>stable</sub> &gt; T<sub>min</sub> (30 min default)?<small>If NO → continue waiting</small></div>
+                  </div>
+                </div>
+
+                <div class="doc-diagram-bridge-vertical">
+                  <span class="ddf-arrow-v">↓</span>
+                  <span class="doc-diagram-bridge-label">YES</span>
+                </div>
+
+                <div class="doc-diagram-box" style="border-color: var(--accent);">
+                  <h5 style="color: var(--accent);">✓ Activate Weighted Welford Decay</h5>
+                  <div class="doc-diagram-flow doc-diagram-flow-vertical">
+                    <div class="ddf-node ddf-highlight">Baseline μ, Σ drift toward new operating point<small>Equal-weight Welford resumes when D<sub>M</sub> &lt; θ₁ against updated baseline</small></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======================== 9. WALKTHROUGH ======================== -->
+        <section id="walkthrough">
+          <h2><span class="heading-number">9.</span> Walkthrough: Deploy with Higher Memory Footprint</h2>
+
+          <p>
+            This scenario illustrates the complete habituation lifecycle for a legitimate
+            workload change.
+          </p>
+
+          <p><strong>Context:</strong></p>
+          <ul class="doc-list">
+            <li>Node: <code>api-server-12</code>, 16GB RAM, stable for 2 weeks</li>
+            <li>Event: Application v3.2 deployed — new caching layer adds ~1.5GB sustained memory usage</li>
+            <li>Baseline: mem_used = 52% ± 4%, D<sub>M</sub> ≈ 1.0</li>
+          </ul>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr><th>Time</th><th>Event</th><th>HOSA State</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>t=0</strong></td>
+                  <td>Deploy v3.2 rolls out. Memory jumps from 52% to 61%.</td>
+                  <td>D<sub>M</sub> spikes to 3.4. dD<sub>M</sub>/dt = +2.3. Level 0→1 (Vigilance). Sampling rate increased.</td>
+                </tr>
+                <tr>
+                  <td><strong>t=30s</strong></td>
+                  <td>Memory stabilizes at 61%. Application serving normally.</td>
+                  <td>D<sub>M</sub> = 3.2. dD<sub>M</sub>/dt → 0. Derivative decelerating. Stays Level 1.</td>
+                </tr>
+                <tr>
+                  <td><strong>t=2min</strong></td>
+                  <td>New steady state confirmed. No errors, no timeouts.</td>
+                  <td>D<sub>M</sub> = 3.1 (stable). dD<sub>M</sub>/dt ≈ 0. Level 1 maintained.<br/>ρ(t) = 0.08 (low — covariance preserved ✓)<br/>ΔH(t) = 0.02 (low — syscalls stable ✓)<br/>ICP(t) = 0.01 (low — no propagation ✓)<br/>D<sub>M</sub> &lt; D<sub>M,safety</sub> ✓<br/><strong>Habituation timer starts.</strong></td>
+                </tr>
+                <tr>
+                  <td><strong>t=5min</strong></td>
+                  <td>Brief CPU spike from background job.</td>
+                  <td>dD<sub>M</sub>/dt briefly positive. <strong>Timer resets.</strong> All pre-conditions must be re-satisfied continuously.</td>
+                </tr>
+                <tr>
+                  <td><strong>t=6min</strong></td>
+                  <td>CPU spike subsides. All metrics stable again.</td>
+                  <td>All pre-conditions re-satisfied. <strong>Timer restarts from zero.</strong></td>
+                </tr>
+                <tr>
+                  <td><strong>t=36min</strong></td>
+                  <td>30 minutes of continuous stability (from t=6min).</td>
+                  <td>T<sub>min</sub> satisfied. <strong>Habituation activates.</strong><br/>Weighted Welford decay begins. μ and Σ start drifting toward new operating point.</td>
+                </tr>
+                <tr>
+                  <td><strong>t=50min</strong></td>
+                  <td>Baseline converging.</td>
+                  <td>D<sub>M</sub> (against updated baseline) = 1.8. Decreasing as baseline adapts.</td>
+                </tr>
+                <tr>
+                  <td><strong>t=70min</strong></td>
+                  <td>Convergence complete.</td>
+                  <td>D<sub>M</sub> (against new baseline) = 0.9 &lt; θ₁. <strong>Habituation complete.</strong><br/>New baseline: mem_used = 61% ± 3%.<br/>Equal-weight Welford resumes. Level 1→0 (Homeostasis).<br/>Full detection sensitivity restored against new baseline.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            <strong>Key outcome:</strong> From the operator's perspective, HOSA briefly
+            entered Vigilance during the deploy, confirmed the change was benign, adapted
+            its baseline, and returned to homeostasis — all without human intervention, and
+            without ever losing the ability to detect a <em>genuine</em> anomaly on top of
+            the new workload.
+          </p>
+        </section>
+
+        <!-- ======================== 10. LIMITATIONS ======================== -->
+        <section id="limitations">
+          <h2><span class="heading-number">10.</span> Known Limitations</h2>
+
+          <ol class="doc-list doc-list-numbered">
+            <li>
+              <strong>Sophisticated adversarial evasion.</strong> An attacker who
+              understands HOSA's architecture and manages to execute malicious activity
+              that <em>perfectly preserves</em> the covariance structure, syscall
+              distribution, and propagation indicators will evade the safety guards and
+              may cause the detector to habituate to the intrusion. Formal adversarial
+              resistance analysis (security games, theoretical evasion bounds) is a future
+              research topic.
+            </li>
+            <li>
+              <strong>T<sub>min</sub> calibration.</strong> The 30-minute default minimum
+              stabilization period is a heuristic. Too short, and HOSA may habituate to
+              transient anomalies; too long, and legitimate workload changes cause extended
+              periods of false positive alerts. The experimental phase will evaluate
+              sensitivity across workload types.
+            </li>
+            <li>
+              <strong>Non-stationary multimodality.</strong> When the system alternates
+              between modes <em>randomly</em> (not on a temporal schedule), the seasonal
+              profiles mechanism does not apply — there is no temporal pattern to segment.
+              Extension to Mixture of Gaussians with streaming EM is documented as future
+              research (see <a href="math-model.html#limitations">§3 — Known Limitations</a>).
+            </li>
+            <li>
+              <strong>Decay rate λ sensitivity.</strong> The exponential decay rate
+              controls how quickly old samples lose influence. An aggressive λ adapts
+              quickly but may cause the baseline to "forget" important historical patterns.
+              A conservative λ preserves history but slows adaptation. The experimental
+              phase will quantify the optimal λ range for common workload classes.
+            </li>
+            <li>
+              <strong>Seasonal profile cold start.</strong> Temporal segmentation requires
+              at least 7 days of data (for weekly cycle detection) or 30 days (for monthly
+              cycles). During this accumulation period, seasonal false positives are
+              expected. The graduated response system mitigates the impact: Level 1
+              (Vigilance) does not execute any intervention, so seasonal false positives
+              produce log entries, not destructive actions.
+            </li>
+            <li>
+              <strong>Interaction with containment.</strong> If HOSA is actively containing
+              at Level 2+ when a legitimate workload change occurs, the containment actions
+              (throttling) may mask the true steady-state of the new workload. Habituation
+              does not activate while containment is active — the system must first
+              de-escalate to Level 0 or 1, at which point the true new operating point
+              becomes visible.
+            </li>
+          </ol>
+        </section>
+
+        <!-- ======================== REFERENCES ======================== -->
+        <section id="references">
+          <h2><span class="heading-number">11.</span> References</h2>
+
+          <ol class="doc-references">
+            <li id="ref-kandel">
+              Kandel, E. R. (2001). The Molecular Biology of Memory Storage: A Dialogue
+              Between Genes and Synapses. <em>Science</em>, 294(5544), 1030–1038.
+            </li>
+            <li id="ref-thompson">
+              Thompson, R. F., &amp; Spencer, W. A. (1966). Habituation: A Model Phenomenon
+              for the Study of Neuronal Substrates of Behavior. <em>Psychological
+              Review</em>, 73(1), 16–43.
+            </li>
+            <li id="ref-welford">
+              Welford, B. P. (1962). Note on a Method for Calculating Corrected Sums of
+              Squares and Products. <em>Technometrics</em>, 4(3), 419–420.
+            </li>
+            <li id="ref-mahalanobis">
+              Mahalanobis, P. C. (1936). On the generalized distance in statistics.
+              <em>Proceedings of the National Institute of Sciences of India</em>, 2(1),
+              49–55.
+            </li>
+            <li id="ref-chandola">
+              Chandola, V., Banerjee, A., &amp; Kumar, V. (2009). Anomaly Detection:
+              A Survey. <em>ACM Computing Surveys</em>, 41(3), Article 15.
+            </li>
+            <li id="ref-hellerstein">
+              Hellerstein, J. L., Diao, Y., Parekh, S., &amp; Tilbury, D. M. (2004).
+              <em>Feedback Control of Computing Systems</em>. John Wiley &amp; Sons.
+            </li>
+            <li id="ref-forrest">
+              Forrest, S., Hofmeyr, S. A., &amp; Somayaji, A. (1997). Computer immunology.
+              <em>Communications of the ACM</em>, 40(10), 88–96.
+            </li>
+          </ol>
+        </section>
+
+      </article>
+
+      <!-- Doc Navigation -->
+      <nav class="doc-nav-footer">
+        <div class="doc-nav-prev">
+          <a href="response-system.html">
+            <span class="doc-nav-label">Previous</span>
+            <span class="doc-nav-title">← §4 Response System</span>
+          </a>
+        </div>
+        <div class="doc-nav-next">
+          <a href="regime-taxonomy.html">
+            <span class="doc-nav-label">Next</span>
+            <span class="doc-nav-title">§6 Regime Taxonomy →</span>
+          </a>
+        </div>
+      </nav>
+
+    </div>
+  </main>
+
+  <!-- ======================== FOOTER ======================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-left">
+          <strong>HOSA</strong> — Homeostasis Operating System Agent
+          <p>Research project · IMECC/Unicamp · GPL-3.0</p>
+        </div>
+        <ul class="footer-links">
+          <li><a href="https://github.com/bricio-sr/hosa" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="whitepaper.pdf">Whitepaper</a></li>
+          <li><a href="/docs/">Documentation</a></li>
+        </ul>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 Fabricio Roney de Amorim. Licensed under GPL-3.0.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('navToggle').addEventListener('click', function () {
+      const nav = document.getElementById('navLinks');
+      const expanded = this.getAttribute('aria-expanded') === 'true';
+      nav.classList.toggle('open');
+      this.setAttribute('aria-expanded', !expanded);
+    });
+  </script>
+</body>
+</html>

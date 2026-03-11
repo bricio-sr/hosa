@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Architecture — HOSA Documentation</title>
+  <meta name="description" content="The perceptive-motor cycle, warm-up calibration, graduated response system, and engineering design decisions of the HOSA architecture." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/docs.css" />
+</head>
+<body>
+
+  <!-- ======================== NAVIGATION ======================== -->
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="container">
+      <a href="/" class="nav-brand">
+        <span class="brand-mark">H</span>
+        HOSA
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="/">Overview</a></li>
+        <li><a href="/#motivation">Motivation</a></li>
+        <li><a href="/#architecture">Architecture</a></li>
+        <li class="active"><a href="/docs/">Documentation</a></li>
+      </ul>
+      <div class="nav-right">
+        <div class="lang-switch">
+          <a href="/docs/architecture.html" class="active">EN</a>
+          <a href="/ptBr/docs/architecture.html">PT</a>
+        </div>
+        <a href="https://github.com/bricio-sr/hosa" class="nav-github" aria-label="GitHub Repository" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ======================== DOC HEADER ======================== -->
+  <header class="doc-header">
+    <div class="container container-narrow">
+      <nav class="doc-breadcrumb" aria-label="Breadcrumb">
+        <a href="/">HOSA</a>
+        <span class="bc-sep">/</span>
+        <a href="/docs/">Documentation</a>
+        <span class="bc-sep">/</span>
+        <span class="bc-current">Architecture</span>
+      </nav>
+      <div class="doc-title-block">
+        <span class="doc-section-number">§2</span>
+        <h1>Architecture</h1>
+      </div>
+      <p class="doc-subtitle">
+        The perceptive-motor cycle, warm-up calibration, graduated response system,
+        quarantine modes, habituation mechanisms, and key engineering design decisions.
+      </p>
+      <div class="doc-meta">
+        <span>Based on Whitepaper v2.1 — Section 5</span>
+        <span class="doc-meta-sep">·</span>
+        <span>~20 min read</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================== DOC BODY ======================== -->
+  <main class="doc-main">
+    <div class="container container-narrow">
+
+      <!-- Table of Contents -->
+      <aside class="doc-toc">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#principles">Architectural Principles</a></li>
+          <li><a href="#perceptive-motor-cycle">The Perceptive-Motor Cycle</a>
+            <ol>
+              <li><a href="#sensory-layer">Sensory Layer — eBPF in Kernel Space</a></li>
+              <li><a href="#cortex-layer">Cortex Layer — Mathematical Engine</a></li>
+              <li><a href="#motor-layer">Motor Layer — Actuation</a></li>
+              <li><a href="#kernel-user-transition">Kernel↔User Space Transition</a></li>
+            </ol>
+          </li>
+          <li><a href="#warmup">Warm-Up and Proprioceptive Calibration</a></li>
+          <li><a href="#graduated-response">Graduated Response System</a>
+            <ol>
+              <li><a href="#response-levels">Response Levels 0–5</a></li>
+              <li><a href="#quarantine-modes">Quarantine Modes by Environment</a></li>
+              <li><a href="#escalation-hysteresis">Escalation and Hysteresis</a></li>
+            </ol>
+          </li>
+          <li><a href="#habituation">Habituation — Adapting to the New Baseline</a></li>
+          <li><a href="#selectivity">Selectivity Policy — The Throttling Problem</a></li>
+          <li><a href="#project-structure">Project Structure</a></li>
+          <li><a href="#design-decisions">Key Design Decisions</a></li>
+          <li><a href="#self-protection">Self-Protection Mechanisms</a></li>
+          <li><a href="#references">References</a></li>
+        </ol>
+      </aside>
+
+      <!-- Content -->
+      <article class="doc-content">
+
+        <!-- ======================== 1. PRINCIPLES ======================== -->
+        <section id="principles">
+          <h2><span class="heading-number">1.</span> Architectural Principles</h2>
+
+          <p>
+            The design of HOSA is governed by five non-negotiable principles. These are not aspirational
+            guidelines — they are hard constraints that every design decision must satisfy.
+          </p>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr><th>#</th><th>Principle</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>1</strong></td>
+                  <td><strong>Local Autonomy</strong></td>
+                  <td>HOSA must execute its complete detection-and-mitigation cycle without dependency on network, external APIs, or human intervention for its primary function.</td>
+                </tr>
+                <tr>
+                  <td><strong>2</strong></td>
+                  <td><strong>Zero External Runtime Dependencies</strong></td>
+                  <td>The agent does not depend on external services (TSDB, message brokers, cloud APIs) to operate. All dependencies are internal to the binary or the host kernel. Communication with external systems is <em>opportunistic</em>: performed when available, never required.</td>
+                </tr>
+                <tr>
+                  <td><strong>3</strong></td>
+                  <td><strong>Predictable Computational Footprint</strong></td>
+                  <td>CPU and memory consumption must be constant and predictable — O(1) in memory, configurable and bounded CPU percentage. The agent must not become the cause of the problem it aims to solve.</td>
+                </tr>
+                <tr>
+                  <td><strong>4</strong></td>
+                  <td><strong>Graduated Response</strong></td>
+                  <td>Mitigation is not binary. HOSA implements a spectrum of responses proportional to the severity and rate of change of the anomaly, from light priority adjustment to complete network isolation.</td>
+                </tr>
+                <tr>
+                  <td><strong>5</strong></td>
+                  <td><strong>Decision Observability</strong></td>
+                  <td>Every autonomous action is logged locally with its mathematical justification — D<sub>M</sub> value, derivative, threshold crossed, action executed. The agent is fully auditable.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="doc-callout doc-callout-note">
+            <div class="doc-callout-title">On Principle 3 — Self-Containment</div>
+            <p>
+              HOSA itself operates within a dedicated cgroup v2 with hard limits on
+              <code>memory.max</code> and <code>cpu.max</code>. If the agent exceeds its own resource
+              limits, the kernel contains it before it affects the system. HOSA practices what it preaches.
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 2. PERCEPTIVE-MOTOR CYCLE ======================== -->
+        <section id="perceptive-motor-cycle">
+          <h2><span class="heading-number">2.</span> The Perceptive-Motor Cycle</h2>
+
+          <p>
+            HOSA operates in a continuous cycle with three functional layers, inspired by the biological
+            separation between sensory system, nervous system, and motor system. These layers map directly
+            to the reflex arc pattern described in
+            <a href="concepts.html#reflex-arc">§1 — Core Concepts</a>.
+          </p>
+
+          <div class="doc-diagram">
+            <div class="doc-diagram-title">
+              <span class="figure-number">Figure 1</span>
+              The three-layer perceptive-motor cycle
+            </div>
+            <div class="doc-diagram-content">
+              <div class="doc-diagram-vertical">
+                <div class="doc-diagram-box doc-diagram-kernel-box">
+                  <h5>Kernel Space — eBPF</h5>
+                  <div class="doc-diagram-flow">
+                    <span class="ddf-node">Sensory Probes<br/><small>tracepoints, kprobes, PSI</small></span>
+                    <span class="ddf-node">Actuators<br/><small>XDP, cgroup controllers</small></span>
+                  </div>
+                </div>
+                <div class="doc-diagram-bridge-vertical">
+                  <span class="ddf-arrow-v">↕</span>
+                  <span class="doc-diagram-bridge-label">Ring Buffer ↓ &nbsp;&nbsp; BPF Maps ↑</span>
+                  <span class="ddf-arrow-v">↕</span>
+                </div>
+                <div class="doc-diagram-box doc-diagram-hosa">
+                  <h5>User Space — Go</h5>
+                  <div class="doc-diagram-flow doc-diagram-flow-vertical">
+                    <span class="ddf-node ddf-highlight">Predictive Cortex<br/><small>Welford → D<sub>M</sub> → EWMA → derivatives → decision</small></span>
+                    <span class="ddf-node">Opportunistic Comms<br/><small>webhooks, metrics, audit log</small></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <section id="sensory-layer">
+            <h3><span class="heading-number">2.1.</span> Sensory Layer — eBPF in Kernel Space</h3>
+
+            <p>
+              The sensory layer collects system state via <strong>eBPF probes</strong> attached directly
+              to kernel tracepoints and kprobes. This is fundamentally different from the polling model used
+              by traditional monitoring agents:
+            </p>
+
+            <div class="doc-comparison">
+              <div class="doc-comparison-col">
+                <h4>Traditional Agent</h4>
+                <ul class="doc-list doc-list-plain">
+                  <li>Reads <code>/proc</code> files periodically</li>
+                  <li>Parses text output, converts to numbers</li>
+                  <li>Interval: 10–60 seconds</li>
+                  <li>Misses transient events between polls</li>
+                  <li>Each read involves syscalls and context switches</li>
+                </ul>
+              </div>
+              <div class="doc-comparison-col">
+                <h4>HOSA eBPF Probes</h4>
+                <ul class="doc-list doc-list-plain">
+                  <li>Attached to kernel tracepoints at load time</li>
+                  <li>Receives structured data as events fire</li>
+                  <li>Continuous — every relevant kernel event captured</li>
+                  <li>No transient events missed</li>
+                  <li>Data flows via ring buffer with μs latency</li>
+                </ul>
+              </div>
+            </div>
+
+            <p>
+              The probes collect data across five resource dimensions:
+            </p>
+
+            <div class="doc-table-wrap">
+              <table class="doc-table">
+                <thead>
+                  <tr><th>Dimension</th><th>Source</th><th>Variables</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>CPU</strong></td>
+                    <td>Tracepoints: <code>sched_switch</code>, <code>sched_process_fork</code></td>
+                    <td>Utilization (aggregate + per-core), context switches, run queue depth</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Memory</strong></td>
+                    <td>Tracepoints: <code>mm_page_alloc</code>, <code>mm_page_free</code>; PSI hooks</td>
+                    <td>Usage, pressure (PSI some/full), swap activity, page faults</td>
+                  </tr>
+                  <tr>
+                    <td><strong>I/O</strong></td>
+                    <td>Tracepoints: <code>block_rq_issue</code>, <code>block_rq_complete</code></td>
+                    <td>Throughput (IOPS), latency, queue depth</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Network</strong></td>
+                    <td>Tracepoints: <code>net_dev_xmit</code>, <code>netif_receive_skb</code></td>
+                    <td>Packet rate (rx/tx), byte rate, connection count</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Scheduler</strong></td>
+                    <td>Tracepoints: <code>sched_wakeup</code>, <code>sched_stat_runtime</code></td>
+                    <td>Run queue depth, scheduling latency</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p>
+              These variables compose the state vector <strong>x(t) ∈ ℝⁿ</strong> that feeds the
+              mathematical engine. The dimensionality <em>n</em> is determined automatically during the
+              warm-up phase based on hardware topology (see <a href="#warmup">§3</a>).
+            </p>
+          </section>
+
+          <section id="cortex-layer">
+            <h3><span class="heading-number">2.2.</span> Cortex Layer — Mathematical Engine</h3>
+
+            <p>
+              The cortex is the decision-making core of HOSA. It executes a nine-step pipeline on every
+              sample received from the sensory layer:
+            </p>
+
+            <ol class="doc-list doc-list-numbered">
+              <li>
+                <strong>Receive events</strong> from the eBPF ring buffer
+              </li>
+              <li>
+                <strong>Update state vector</strong> x(t) with current values
+              </li>
+              <li>
+                <strong>Update μ and Σ</strong> incrementally via the Welford algorithm
+                <a href="#ref-welford" class="ref-link">[1]</a> — O(n²) per sample with O(1) memory allocation
+              </li>
+              <li>
+                <strong>Calculate D<sub>M</sub>(x(t))</strong> — the Mahalanobis Distance from the
+                baseline profile (see <a href="math-model.html">§3 — Math Model</a> for full derivation)
+              </li>
+              <li>
+                <strong>Apply EWMA smoothing</strong> → D̄<sub>M</sub>(t) to suppress noise before
+                differentiation
+              </li>
+              <li>
+                <strong>Calculate derivatives</strong> — dD̄<sub>M</sub>/dt (velocity of deviation)
+                and d²D̄<sub>M</sub>/dt² (acceleration of deviation)
+              </li>
+              <li>
+                <strong>Evaluate against adaptive thresholds</strong> — θ₁, θ₂, θ₃, θ₄ calibrated
+                during warm-up as multiples of the baseline standard deviation
+              </li>
+              <li>
+                <strong>Determine response level</strong> (0–5) based on the combination of D<sub>M</sub>,
+                its derivatives, and the Load Direction Index φ(t)
+              </li>
+              <li>
+                <strong>Send actuation command</strong> via BPF maps back to kernel space
+              </li>
+            </ol>
+
+            <p>
+              The entire pipeline executes in user space with <strong>zero heap allocation</strong> on the
+              hot path. All matrix operations use pre-allocated slices; the Welford algorithm updates
+              in-place; and the EWMA filter operates on scalar registers. This ensures that the
+              mathematical engine does not trigger garbage collection during critical decision windows.
+            </p>
+
+            <div class="doc-callout doc-callout-info">
+              <div class="doc-callout-title">Latency Budget</div>
+              <p>
+                The target latency for the complete cortex pipeline (steps 1–9) is <strong>&lt;500μs</strong>
+                for a state vector of n=10 dimensions on commodity hardware. The dominant cost is the
+                matrix-vector multiplication in step 4 (O(n²)), which for n=10 involves 100 floating-point
+                operations — trivial on modern CPUs. The ring buffer read (step 1) and BPF map write (step 9)
+                contribute ~1–10μs each.
+              </p>
+            </div>
+          </section>
+
+          <section id="motor-layer">
+            <h3><span class="heading-number">2.3.</span> Motor Layer — Actuation</h3>
+
+            <p>
+              The motor layer translates response-level decisions into concrete kernel actions via two
+              primary mechanisms:
+            </p>
+
+            <div class="doc-table-wrap">
+              <table class="doc-table">
+                <thead>
+                  <tr><th>Mechanism</th><th>Interface</th><th>Actions</th><th>Latency</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>cgroups v2</strong></td>
+                    <td>Direct file writes to <code>/sys/fs/cgroup/</code></td>
+                    <td>
+                      <code>memory.high</code> — apply memory backpressure<br/>
+                      <code>cpu.max</code> — throttle CPU bandwidth<br/>
+                      <code>cgroup.freeze</code> — freeze process group
+                    </td>
+                    <td>~10–100μs</td>
+                  </tr>
+                  <tr>
+                    <td><strong>XDP</strong></td>
+                    <td>eBPF programs at network driver level</td>
+                    <td>
+                      <code>XDP_DROP</code> — drop packets before stack processing<br/>
+                      Selective filtering: new connections dropped, existing preserved<br/>
+                      Healthcheck traffic always allowed
+                    </td>
+                    <td>~1–5μs per packet</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p>
+              A critical design distinction: HOSA's primary containment mechanism is
+              <strong>throttling, not killing</strong>. Setting <code>memory.high</code> instructs the
+              kernel to apply reclaim pressure on the target cgroup, slowing memory allocation without
+              terminating the process. This preserves in-flight transactions — the process is degraded
+              but alive.
+            </p>
+          </section>
+
+          <section id="kernel-user-transition">
+            <h3><span class="heading-number">2.4.</span> On Kernel↔User Space Transition</h3>
+
+            <p>
+              The HOSA execution model involves transition between kernel space (eBPF collection and
+              actuation) and user space (mathematical computation). This transition uses the eBPF ring
+              buffer mechanism and BPF maps, with typical latency on the order of
+              <strong>1–10μs</strong> on modern hardware.
+            </p>
+
+            <div class="doc-callout doc-callout-note">
+              <div class="doc-callout-title">Terminology Clarification</div>
+              <p>
+                The correct characterization of this model is <strong>"zero external runtime
+                dependencies"</strong> — HOSA does not depend on processes, services, or infrastructure
+                external to the agent binary and the host kernel. The kernel↔user transition is internal
+                to the agent. An earlier version of the whitepaper incorrectly described this as "zero
+                context switch," which has been corrected.
+              </p>
+            </div>
+          </section>
+        </section>
+
+        <!-- ======================== 3. WARM-UP ======================== -->
+        <section id="warmup">
+          <h2><span class="heading-number">3.</span> Warm-Up and Proprioceptive Calibration</h2>
+
+          <p>
+            Upon starting, HOSA executes a calibration phase termed <strong>Hardware
+            Proprioception</strong> — a term borrowed from the biological sense by which an organism
+            perceives its own body configuration. During this phase, HOSA learns both the hardware
+            topology and the behavioral baseline of the node.
+          </p>
+
+          <ol class="doc-list doc-list-numbered">
+            <li>
+              <strong>Topological discovery.</strong> Via reading <code>/sys/devices/system/node/</code>
+              and <code>/sys/devices/system/cpu/</code>, the agent identifies NUMA topology, physical and
+              logical core count, L1/L2/L3 cache sizes, and memory configuration.
+            </li>
+            <li>
+              <strong>State vector definition.</strong> Based on topology, HOSA determines which variables
+              to include in x(t) and their respective eBPF sources. A single-socket server with NVMe
+              storage produces a different vector than a dual-socket machine with spinning disks.
+            </li>
+            <li>
+              <strong>Baseline accumulation.</strong> During a configurable period (default:
+              <strong>5 minutes</strong>), the agent collects samples without executing mitigation,
+              accumulating the initial μ₀ and Σ₀ via Welford incremental updates. This is the node's
+              <em>baseline profile</em>.
+            </li>
+            <li>
+              <strong>EWMA calibration.</strong> The smoothing factor α is calibrated for each resource
+              based on the variance observed during warm-up. Higher-variance signals receive lower α
+              (more smoothing) to prevent false derivatives.
+            </li>
+            <li>
+              <strong>Adaptive threshold definition.</strong> The thresholds θ₁ through θ₄ for each
+              response level are calculated as multiples of the standard deviation observed in the
+              baseline regime (e.g., Level 1 = 2σ, Level 3 = 4σ).
+            </li>
+          </ol>
+
+          <p>
+            After warm-up, μ and Σ <strong>continue to be updated incrementally</strong>, allowing the
+            baseline profile to evolve with legitimate workload changes (see
+            <a href="#habituation">§5 — Habituation</a>).
+          </p>
+
+          <div class="doc-callout doc-callout-critical">
+            <div class="doc-callout-title">Cold Start Vulnerability</div>
+            <p>
+              During the warm-up period, the agent does not have a sufficient baseline profile for
+              reliable detection. In this interval, HOSA operates in conservative mode — logging only,
+              no mitigation. This constitutes a <strong>known vulnerability window</strong> and is
+              documented as a limitation in the whitepaper (§9.2). The duration is configurable and
+              can be reduced if the node has a pre-computed baseline from a previous execution.
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 4. GRADUATED RESPONSE ======================== -->
+        <section id="graduated-response">
+          <h2><span class="heading-number">4.</span> Graduated Response System</h2>
+
+          <p>
+            The graduated response is one of HOSA's most critical architectural decisions. Rather than
+            implementing a binary switch (healthy → kill), the system defines a spectrum of six
+            proportional response levels, each with specific activation conditions, actions, and
+            reversibility guarantees.
+          </p>
+
+          <section id="response-levels">
+            <h3><span class="heading-number">4.1.</span> Response Levels 0–5</h3>
+
+            <div class="figure-caption figure-caption-above">
+              <span class="figure-number">Table 1</span>
+              <span class="figure-text">Complete specification of graduated response levels with activation conditions.</span>
+            </div>
+
+            <div class="doc-table-wrap">
+              <table class="doc-table">
+                <thead>
+                  <tr>
+                    <th>Level</th>
+                    <th>Name</th>
+                    <th>Activation Condition</th>
+                    <th>Action</th>
+                    <th>Reversibility</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="level-badge level-0"><span class="dot"></span>0</span></td>
+                    <td>Homeostasis</td>
+                    <td>D<sub>M</sub> &lt; θ₁ and dD<sub>M</sub>/dt ≤ 0</td>
+                    <td>None. Suppress redundant telemetry (Thalamic Filter). Heartbeat only.</td>
+                    <td>N/A</td>
+                  </tr>
+                  <tr>
+                    <td><span class="level-badge level-1"><span class="dot"></span>1</span></td>
+                    <td>Vigilance</td>
+                    <td>D<sub>M</sub> &gt; θ₁ or sustained dD<sub>M</sub>/dt &gt; 0</td>
+                    <td>Increase sampling rate (100ms → 10ms). Local logging. No system intervention.</td>
+                    <td>Automatic — returns to L0 when condition ceases</td>
+                  </tr>
+                  <tr>
+                    <td><span class="level-badge level-2"><span class="dot"></span>2</span></td>
+                    <td>Soft Containment</td>
+                    <td>D<sub>M</sub> &gt; θ₂ and dD<sub>M</sub>/dt &gt; 0</td>
+                    <td><code>renice</code> non-essential processes via cgroups. Webhook notification (opportunistic).</td>
+                    <td>Automatic — gradual renice relaxation</td>
+                  </tr>
+                  <tr>
+                    <td><span class="level-badge level-3"><span class="dot"></span>3</span></td>
+                    <td>Active Containment</td>
+                    <td>D<sub>M</sub> &gt; θ₃ and d²D<sub>M</sub>/dt² &gt; 0 (positive acceleration)</td>
+                    <td>CPU/memory throttling via cgroups on identified contributors. Partial load shedding via XDP (drop new connections, preserve existing). Urgent webhook.</td>
+                    <td>Automatic with hysteresis — relaxation when D<sub>M</sub> &lt; θ₂ for sustained period</td>
+                  </tr>
+                  <tr>
+                    <td><span class="level-badge level-4"><span class="dot"></span>4</span></td>
+                    <td>Severe Containment</td>
+                    <td>D<sub>M</sub> &gt; θ₄ or convergence velocity indicates exhaustion within &lt; T seconds</td>
+                    <td>Aggressive throttling. XDP blocks all inbound traffic except orchestrator healthchecks. Freeze non-critical cgroups.</td>
+                    <td>Requires sustained D<sub>M</sub> reduction below θ₃ for extended period</td>
+                  </tr>
+                  <tr>
+                    <td><span class="level-badge level-5"><span class="dot"></span>5</span></td>
+                    <td>Quarantine</td>
+                    <td>Containment failure at prior levels. D<sub>M</sub> in uncontrolled ascent despite active mitigations.</td>
+                    <td>Network isolation. Non-essential processes frozen (SIGSTOP). Detailed log to persistent storage. Final webhook with quarantine state.</td>
+                    <td><strong>Manual</strong> — requires administrative intervention to restore</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p>
+              The key insight in the graduated response design is the use of <strong>both the value and
+              the derivatives</strong> of D<sub>M</sub> for level determination. Level 3 requires not
+              just a high D<sub>M</sub>, but <em>positive acceleration</em> — the system is not merely
+              stressed but accelerating toward collapse. This prevents aggressive response during
+              stable-but-elevated workloads (which are handled by the habituation mechanism instead).
+            </p>
+          </section>
+
+          <section id="quarantine-modes">
+            <h3><span class="heading-number">4.2.</span> Quarantine Modes by Environment Class</h3>
+
+            <p>
+              The autonomous quarantine (Level 5) involves network isolation of the compromised node. The
+              feasibility and strategy of this isolation vary fundamentally by infrastructure class. HOSA
+              implements <strong>differentiated quarantine modes</strong>, selected automatically during
+              Hardware Proprioception or configured explicitly by the operator.
+            </p>
+
+            <div class="doc-table-wrap">
+              <table class="doc-table">
+                <thead>
+                  <tr><th>Environment</th><th>Detection</th><th>Quarantine Strategy</th><th>Recovery</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Bare metal with IPMI</strong></td>
+                    <td>IPMI interface detection via <code>/sys/class/net/</code> and <code>ipmi_*</code> kernel modules</td>
+                    <td>Disable all network interfaces <em>except</em> the out-of-band management interface (IPMI/iLO/iDRAC). Node remains accessible via management console.</td>
+                    <td>Manual via IPMI console</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Cloud VM</strong> <span class="text-secondary">(AWS, GCP, Azure)</span></td>
+                    <td>DMI/SMBIOS, metadata service (169.254.169.254), hypervisor detection</td>
+                    <td><strong>Does not disable interfaces.</strong> Instead: (1) XDP drops all traffic except metadata service, DHCP, and orchestrator endpoint. (2) Signals quarantine via cloud-native mechanism (instance tag, SNS, healthcheck → HTTP 503). (3) Orchestrator decides terminate/replace.</td>
+                    <td>Orchestrator terminates and replaces instance. Optional self-termination via cloud API if orchestrator doesn't act within 5 min (disabled by default).</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Kubernetes</strong></td>
+                    <td>Container detection via <code>/proc/1/cgroup</code>, <code>KUBERNETES_SERVICE_HOST</code></td>
+                    <td>Does not isolate the host node (no permission). Instead: (1) Maximum cgroup containment on offending pods. (2) Applies taint <code>hosa.io/quarantine=true:NoExecute</code> and condition <code>HOSAQuarantine=True</code> via K8s API, causing pod evacuation. (3) Emits Warning Event.</td>
+                    <td>Operator removes taint after investigation. Node returns to scheduling pool.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Edge/IoT with physical access</strong></td>
+                    <td>Explicit operator configuration</td>
+                    <td>Complete network interface deactivation. Device operates in isolated mode. Logs preserved on local flash/eMMC. LED or display visual signaling if available.</td>
+                    <td>Manual — field technician accesses device, collects logs, restores.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Edge/IoT without physical access</strong></td>
+                    <td>Explicit operator configuration</td>
+                    <td>Network deactivation + hardware watchdog timer (default: 30 min). If no intervention occurs, watchdog reboots device with <code>quarantine_recovery=true</code> flag. Agent enters conservative mode post-reboot (logging only) to allow remote diagnosis.</td>
+                    <td>Automatic via watchdog reboot with observation period</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Air-gapped</strong> <span class="text-secondary">(SCADA/ICS)</span></td>
+                    <td>Explicit operator configuration</td>
+                    <td>Identical to bare metal, with all opportunistic communication permanently disabled. Logs written exclusively to encrypted local storage. Collected periodically by authorized personnel.</td>
+                    <td>Manual via authorized physical access</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="doc-callout doc-callout-note">
+              <div class="doc-callout-title">Design Principle — Automatic Detection with Manual Override</div>
+              <p>
+                HOSA attempts to automatically detect the environment class and select the appropriate
+                quarantine mode. The operator can override this detection via explicit configuration. In
+                case of ambiguity (e.g., a private cloud VM that doesn't respond to the standard metadata
+                service), HOSA assumes the <strong>most conservative mode</strong> (cloud VM — does not
+                disable interfaces), prioritizing recoverability over isolation.
+              </p>
+            </div>
+          </section>
+
+          <section id="escalation-hysteresis">
+            <h3><span class="heading-number">4.3.</span> Escalation and Hysteresis</h3>
+
+            <p>
+              Transitions between response levels are governed by two rules that prevent oscillation
+              (flapping):
+            </p>
+
+            <ul class="doc-list">
+              <li>
+                <strong>Escalation requires sustained condition.</strong> The activation condition for
+                a higher level must be met for a minimum sustained period (configurable, default varies
+                by level) before escalation occurs. HOSA does not jump from Level 0 to Level 4 in a
+                single cycle.
+              </li>
+              <li>
+                <strong>De-escalation requires hysteresis.</strong> Returning to a lower level requires
+                the condition for the <em>lower</em> level (not just the absence of the higher-level
+                condition) to be sustained. For example, dropping from Level 3 to Level 2 requires
+                D<sub>M</sub> &lt; θ₂ (not just D<sub>M</sub> &lt; θ₃) for a sustained period. This
+                prevents rapid oscillation at threshold boundaries.
+              </li>
+            </ul>
+
+            <p>
+              The combination of derivative-based escalation and hysteresis-based de-escalation produces
+              a system that is <strong>fast to escalate</strong> (responds to acceleration, not just
+              magnitude) but <strong>slow to de-escalate</strong> (requires confirmed recovery, not
+              just momentary improvement).
+            </p>
+          </section>
+        </section>
+
+        <!-- ======================== 5. HABITUATION ======================== -->
+        <section id="habituation">
+          <h2><span class="heading-number">5.</span> Habituation — Adapting to the New Baseline</h2>
+
+          <p>
+            A recurring problem in anomaly detection systems is <strong>chronic false positives</strong>:
+            when the legitimate workload changes permanently (e.g., deployment of a new application version
+            that consumes more memory), the detector continues signaling anomaly indefinitely.
+          </p>
+
+          <p>
+            HOSA implements a <strong>habituation mechanism</strong> inspired by neuroplasticity:
+          </p>
+
+          <ol class="doc-list doc-list-numbered">
+            <li>
+              If D<sub>M</sub> remains elevated but <strong>stable</strong> (derivative near zero) for a
+              configurable period without any real failure (no OOM, no timeout, no process crash);
+            </li>
+            <li>
+              And the <strong>covariance structure is preserved</strong> (the deformation ratio ρ(t) is
+              below threshold — resources still correlate in the same proportions, just at higher magnitude);
+            </li>
+            <li>
+              And <strong>no indicators of compromise</strong> are present (syscall entropy ΔH and
+              propagation index ICP below thresholds);
+            </li>
+            <li>
+              Then HOSA recalibrates μ and Σ with increasing weight on recent samples, effectively
+              <strong>shifting the baseline profile to the new operational regime</strong>.
+            </li>
+          </ol>
+
+          <p>
+            This is implemented via exponential decay of weights in the Welford algorithm, assigning
+            lower influence to older samples and allowing Σ to reflect the contemporary covariance
+            of the system.
+          </p>
+
+          <div class="doc-callout doc-callout-critical">
+            <div class="doc-callout-title">Safeguards Against Premature Habituation</div>
+            <p>
+              Habituation is <strong>blocked</strong> when: (a) stabilization occurs near the physical
+              safety limit of a resource (e.g., memory &gt; 90% — stabilizing at 92% is not a safe "new
+              normal"); (b) the covariance deformation ratio ρ(t) exceeds threshold (structural change,
+              not just magnitude change — potentially adversarial); (c) the propagation index ICP is
+              elevated (viral behavior); (d) the derivative remains positive sustained (progressive
+              failure, not stable plateau). The formal pre-condition is documented in the whitepaper §6.12.
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== 6. SELECTIVITY ======================== -->
+        <section id="selectivity">
+          <h2><span class="heading-number">6.</span> Selectivity Policy — The Throttling Problem</h2>
+
+          <p>
+            While throttling via cgroups is an effective mitigation against resource exhaustion, it
+            introduces secondary risks that must be explicitly addressed:
+          </p>
+
+          <ul class="doc-list">
+            <li>
+              <strong>Cascading timeouts.</strong> A throttled HTTP backend can cause connection
+              accumulation upstream, propagating degradation to healthy services.
+            </li>
+            <li>
+              <strong>Transaction deadlocks.</strong> A process throttled during a database transaction
+              may hold locks indefinitely, blocking other processes.
+            </li>
+            <li>
+              <strong>Critical component starvation.</strong> If the Kubernetes kubelet is throttled,
+              the node is marked NotReady and all pods are evacuated — potentially causing more damage
+              than the original problem.
+            </li>
+          </ul>
+
+          <p>
+            HOSA addresses these risks through a <strong>safelist</strong> — a protected list of processes
+            and cgroups that are never targets of throttling:
+          </p>
+
+          <ul class="doc-list">
+            <li>Kernel processes (<code>kthreadd</code>, <code>ksoftirqd</code>, etc.)</li>
+            <li>The HOSA agent itself</li>
+            <li>Orchestration agents (<code>kubelet</code>, <code>containerd</code>, <code>dockerd</code>) when detected</li>
+            <li>Processes explicitly marked by the operator via configuration or cgroup label</li>
+          </ul>
+
+          <p>
+            Throttling is applied preferentially to the processes identified as <strong>greatest
+            contributors</strong> to the anomaly, determined by the decomposition of x(t) — the processes
+            whose resource consumption most contributes to the dimensions where D<sub>M</sub> diverges
+            from baseline. This dimensional contribution analysis (c<sub>j</sub> decomposition) is
+            documented in <a href="math-model.html">§3 — Math Model</a>.
+          </p>
+        </section>
+
+        <!-- ======================== 7. PROJECT STRUCTURE ======================== -->
+        <section id="project-structure">
+          <h2><span class="heading-number">7.</span> Project Structure</h2>
+
+          <p>
+            The codebase follows a layered organization that mirrors the biological metaphor:
+          </p>
+
+          <div class="code-block">
+<pre>hosa/
+├── cmd/hosa/
+│   └── main.go                <span class="comment"># Entry point — agent initialization</span>
+├── internal/
+│   ├── sysbpf/
+│   │   └── syscall.go         <span class="comment"># Custom eBPF loader via native syscalls</span>
+│   ├── linalg/
+│   │   └── matrix.go          <span class="comment"># Linear algebra (matrices, inversion, covariance)</span>
+│   ├── syscgroup/
+│   │   └── file_edit.go       <span class="comment"># Direct cgroup file manipulation via VFS</span>
+│   ├── bpf/
+│   │   ├── sensors.c          <span class="comment"># eBPF C code injected into the kernel</span>
+│   │   └── bpf_bpfeb.go       <span class="comment"># Auto-generated Go↔C bridge (cilium/ebpf)</span>
+│   ├── sensor/                <span class="comment"># ── The Sensory System</span>
+│   │   └── collector.go       <span class="comment"># Reads eBPF maps → state vector x(t)</span>
+│   ├── brain/                 <span class="comment"># ── The Predictive Cortex</span>
+│   │   ├── matrix.go          <span class="comment"># Covariance matrix management (Welford)</span>
+│   │   ├── mahalanobis.go     <span class="comment"># D_M calculation</span>
+│   │   └── predictor.go       <span class="comment"># EWMA, derivatives, level determination</span>
+│   ├── motor/                 <span class="comment"># ── The Reflex Arc (Actuators)</span>
+│   │   ├── cgroups.go         <span class="comment"># Process throttling via cgroups v2</span>
+│   │   └── signals.go         <span class="comment"># Process signaling (SIGSTOP/SIGCONT)</span>
+│   └── state/                 <span class="comment"># ── The Limbic System</span>
+│       └── memory.go          <span class="comment"># Short-term ring buffer for baseline</span>
+├── docs/
+│   ├── whitepaper.pdf         <span class="comment"># Full academic whitepaper v2.1</span>
+│   └── *.html                 <span class="comment"># Documentation pages</span>
+└── Makefile                   <span class="comment"># make build → compiles eBPF C + Go</span></pre>
+          </div>
+
+          <p>
+            The naming convention deliberately uses biological terms (<code>brain/</code>,
+            <code>sensor/</code>, <code>motor/</code>, <code>state/</code>) to maintain the conceptual
+            mapping between architecture and metaphor throughout the codebase.
+          </p>
+        </section>
+
+        <!-- ======================== 8. DESIGN DECISIONS ======================== -->
+        <section id="design-decisions">
+          <h2><span class="heading-number">8.</span> Key Design Decisions</h2>
+
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr><th>Decision</th><th>Rationale</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Mahalanobis over ML/DL</strong></td>
+                  <td>O(n²) constant memory, no GPU, no training pipeline, runs on a Raspberry Pi with 512MB RAM. Produces interpretable results (dimensional contributions c<sub>j</sub>). Full rationale in <a href="math-model.html">§3 — Math Model</a>.</td>
+                </tr>
+                <tr>
+                  <td><strong>Welford incremental updates</strong></td>
+                  <td>O(n²) per sample with O(1) memory allocation. No data windows stored. Predictable footprint regardless of uptime. For n=10 variables, the entire statistical state occupies &lt;2KB.</td>
+                </tr>
+                <tr>
+                  <td><strong>EWMA before derivatives</strong></td>
+                  <td>Numerical differentiation of discrete, noisy data is an ill-posed problem in the sense of Hadamard <a href="#ref-hadamard" class="ref-link">[2]</a>. The second derivative amplifies noise quadratically. EWMA smoothing before differentiation is mandatory for stable derivative estimates.</td>
+                </tr>
+                <tr>
+                  <td><strong>Go for user space</strong></td>
+                  <td>Pragmatic choice for research velocity. Go 1.22+ GC pauses are sub-millisecond. The hot path uses zero-allocation patterns (<code>sync.Pool</code>, pre-allocated slices, <code>GOGC=off</code> during critical cycles). The <code>cilium/ebpf</code> library provides a mature eBPF ecosystem. If GC pauses prove problematic in benchmarks, the hot path can be migrated to C via CGo.</td>
+                </tr>
+                <tr>
+                  <td><strong>Throttle, not kill</strong></td>
+                  <td>OOM-Killer already exists and is destructive. HOSA's value proposition is <em>preventing</em> the need for kills by applying graduated pressure early. <code>memory.high</code> backpressure preserves in-flight transactions.</td>
+                </tr>
+                <tr>
+                  <td><strong>Complement, not replace</strong></td>
+                  <td>HOSA is the reflex arc; Prometheus/Datadog/Kubernetes are the cerebral cortex. Different temporal scales, different decision scopes. HOSA keeps the node alive during the Lethal Interval; the orchestrator handles strategic decisions afterward.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ======================== 9. SELF-PROTECTION ======================== -->
+        <section id="self-protection">
+          <h2><span class="heading-number">9.</span> Self-Protection Mechanisms</h2>
+
+          <p>
+            A legitimate concern for any autonomous agent running with kernel privileges is:
+            <em>can the agent itself become the cause of the problem?</em> HOSA addresses this through
+            multiple layers of self-protection:
+          </p>
+
+          <ol class="doc-list doc-list-numbered">
+            <li>
+              <strong>Self-contained footprint.</strong> HOSA operates within its own cgroup v2 with hard
+              limits on <code>memory.max</code> and <code>cpu.max</code>. If the agent exceeds its own
+              limits, the kernel constrains it before it affects the system.
+            </li>
+            <li>
+              <strong>Safelist self-inclusion.</strong> HOSA is the first entry in its own safelist —
+              it never throttles itself. Kernel processes and orchestration agents are also protected by
+              default.
+            </li>
+            <li>
+              <strong>Reversible mitigation.</strong> Levels 0–4 are automatically reversible. No
+              destructive action (process kill, interface deactivation) is executed below Level 5.
+            </li>
+            <li>
+              <strong>Escalation hysteresis.</strong> Level transitions require sustained conditions,
+              preventing oscillation. The agent cannot jump from Level 0 to Level 4 in a single cycle.
+            </li>
+            <li>
+              <strong>Dry-run mode.</strong> The agent can be executed in observation mode (logging
+              and decision calculation without action execution), allowing validation of decision quality
+              before enabling actuation.
+            </li>
+            <li>
+              <strong>Deterministic compilation.</strong> The binary is compiled statically with no
+              dynamic dependencies. No risk of failure due to absent or incompatible shared libraries.
+            </li>
+            <li>
+              <strong>eBPF verifier as safety net.</strong> All eBPF programs are validated by the
+              kernel's eBPF verifier before loading. A bug in the eBPF C code causes the program to
+              be rejected at load time (fail-safe), not at runtime.
+            </li>
+          </ol>
+
+          <div class="doc-callout doc-callout-info">
+            <div class="doc-callout-title">On the Impossibility of Total Risk Elimination</div>
+            <p>
+              The total elimination of risk is impossible for any software that executes with kernel-space
+              privileges. Bugs in user space can cause incorrect decisions. The mitigation is: extensive
+              testing, dry-run mode, and the recognition that an agent that makes an incorrect throttling
+              decision (effect: temporary latency increase) is <strong>categorically less destructive</strong>
+              than the complete absence of mitigation (effect: OOM-Kill, crash, data loss).
+            </p>
+          </div>
+        </section>
+
+        <!-- ======================== REFERENCES ======================== -->
+        <section id="references">
+          <h2><span class="heading-number">10.</span> References</h2>
+
+          <ol class="doc-references">
+            <li id="ref-welford">
+              Welford, B. P. (1962). Note on a Method for Calculating Corrected Sums of Squares and
+              Products. <em>Technometrics</em>, 4(3), 419–420.
+            </li>
+            <li id="ref-hadamard">
+              Hadamard, J. (1902). Sur les problèmes aux dérivées partielles et leur signification
+              physique. <em>Princeton University Bulletin</em>, 13, 49–52.
+            </li>
+            <li id="ref-heo">
+              Heo, T. (2015). Control Group v2. <em>Linux Kernel Documentation.</em>
+              <a href="https://www.kernel.org/doc/Documentation/cgroup-v2.txt" target="_blank" rel="noopener">kernel.org</a>
+            </li>
+            <li id="ref-gregg">
+              Gregg, B. (2019). <em>BPF Performance Tools: Linux System and Application
+              Observability.</em> Addison-Wesley Professional.
+            </li>
+            <li id="ref-vieira">
+              Vieira, M. A., et al. (2020). Fast Packet Processing with eBPF and XDP: Concepts, Code,
+              Challenges, and Applications. <em>ACM Computing Surveys</em>, 53(1), Article 16.
+            </li>
+            <li id="ref-horn">
+              Horn, P. (2001). Autonomic Computing: IBM's Perspective on the State of Information
+              Technology. <em>IBM Corporation.</em>
+            </li>
+            <li id="ref-hellerstein">
+              Hellerstein, J. L., Diao, Y., Parekh, S., &amp; Tilbury, D. M. (2004).
+              <em>Feedback Control of Computing Systems.</em> John Wiley &amp; Sons.
+            </li>
+          </ol>
+        </section>
+
+      </article>
+
+      <!-- Doc Navigation -->
+      <nav class="doc-nav-footer">
+        <div class="doc-nav-prev">
+          <a href="concepts.html">
+            <span class="doc-nav-label">Previous</span>
+            <span class="doc-nav-title">← §1 Core Concepts</span>
+          </a>
+        </div>
+        <div class="doc-nav-next">
+          <a href="math-model.html">
+            <span class="doc-nav-label">Next</span>
+            <span class="doc-nav-title">§3 Mathematical Model →</span>
+          </a>
+        </div>
+      </nav>
+
+    </div>
+  </main>
+
+  <!-- ======================== FOOTER ======================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-left">
+          <strong>HOSA</strong> — Homeostasis Operating System Agent
+          <p>Research project · IMECC/Unicamp · GPL-3.0</p>
+        </div>
+        <ul class="footer-links">
+          <li><a href="https://github.com/bricio-sr/hosa" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="whitepaper.pdf">Whitepaper</a></li>
+          <li><a href="/docs/">Documentation</a></li>
+        </ul>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 Fabricio Roney de Amorim. Licensed under GPL-3.0.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('navToggle').addEventListener('click', function () {
+      const nav = document.getElementById('navLinks');
+      const expanded = this.getAttribute('aria-expanded') === 'true';
+      nav.classList.toggle('open');
+      this.setAttribute('aria-expanded', !expanded);
+    });
+  </script>
+</body>
+</html>

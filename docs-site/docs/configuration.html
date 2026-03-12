@@ -27,171 +27,158 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: rgba(10, 12, 20, 0.45);
+      background: rgba(10, 12, 20, 0.55);
       backdrop-filter: blur(2px);
       -webkit-backdrop-filter: blur(2px);
     }
 
     .coming-soon-card {
-      text-align: center;
-      padding: 3rem 4rem;
-      border-radius: 1.25rem;
-      background: rgba(15, 18, 30, 0.85);
-      border: 1px solid rgba(99, 102, 241, 0.3);
-      box-shadow:
-        0 0 60px rgba(99, 102, 241, 0.15),
-        0 25px 50px rgba(0, 0, 0, 0.4);
-      max-width: 520px;
+      padding: 36px 40px;
+      border-radius: 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.35);
+      max-width: 480px;
       width: 90%;
-      animation: cardFadeIn 0.8s ease-out;
+      animation: cardFadeIn 0.5s ease-out;
     }
 
     @keyframes cardFadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(20px) scale(0.97);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-      }
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
 
-    .coming-soon-icon {
-      width: 64px;
-      height: 64px;
-      margin: 0 auto 1.5rem;
-      border-radius: 50%;
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
-      border: 1px solid rgba(99, 102, 241, 0.35);
+    /* Breadcrumb-style label no topo */
+    .coming-soon-eyebrow {
       display: flex;
       align-items: center;
-      justify-content: center;
-      animation: iconPulse 3s ease-in-out infinite;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-tertiary);
+      margin-bottom: 18px;
     }
 
-    @keyframes iconPulse {
-      0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.15); }
-      50% { box-shadow: 0 0 35px rgba(99, 102, 241, 0.3); }
+    .coming-soon-eyebrow .cs-sep {
+      font-size: 0.65rem;
+      color: var(--text-tertiary);
     }
 
-    .coming-soon-icon svg {
-      width: 28px;
-      height: 28px;
-      fill: none;
-      stroke: #a78bfa;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
+    .coming-soon-eyebrow .cs-current {
+      color: var(--text-secondary);
+    }
+
+    /* Título no estilo doc-title-block */
+    .coming-soon-title-block {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .coming-soon-section-tag {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--accent);
+      background: var(--accent-subtle);
+      padding: 4px 10px;
+      border-radius: 4px;
+      flex-shrink: 0;
     }
 
     .coming-soon-card h2 {
-      font-family: 'Inter', sans-serif;
-      font-size: 2rem;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      margin: 0 0 0.75rem;
-      background: linear-gradient(135deg, #e0e7ff, #a78bfa);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      font-family: var(--font-serif);
+      font-size: 1.6rem;
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      margin: 0;
     }
 
     .coming-soon-card p {
-      font-family: 'Inter', sans-serif;
-      font-size: 1rem;
-      line-height: 1.6;
-      color: rgba(203, 213, 225, 0.8);
-      margin: 0 0 1.75rem;
+      font-size: 0.9rem;
+      line-height: 1.75;
+      color: var(--text-secondary);
+      margin: 0 0 24px;
     }
 
-    .coming-soon-badge {
-      display: inline-flex;
+    /* Badge tipo doc-callout-note */
+    .coming-soon-callout {
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      background: var(--accent-subtle);
+      padding: 14px 18px;
+      margin: 20px 0 24px;
+      display: flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1.25rem;
-      border-radius: 999px;
-      background: rgba(99, 102, 241, 0.12);
-      border: 1px solid rgba(99, 102, 241, 0.25);
-      color: #a78bfa;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
-      font-weight: 500;
-      letter-spacing: 0.05em;
+      gap: 10px;
     }
 
     .coming-soon-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: #a78bfa;
+      background: var(--accent);
+      flex-shrink: 0;
       animation: dotBlink 2s ease-in-out infinite;
     }
 
     @keyframes dotBlink {
       0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
+      50%       { opacity: 0.3; }
     }
 
-    .coming-soon-actions {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem;
-      margin-top: 2rem;
+    .coming-soon-callout span {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent);
     }
 
+    /* Botão alinhado com doc-nav-footer */
     .coming-soon-btn {
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.75rem 2rem;
-      border-radius: 0.625rem;
-      font-family: 'Inter', sans-serif;
-      font-size: 0.9rem;
+      gap: 8px;
+      padding: 12px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: var(--font-sans, 'Inter', sans-serif);
+      font-size: 0.88rem;
       font-weight: 600;
+      color: var(--text-primary);
       text-decoration: none;
-      transition: all 0.25s ease;
-      cursor: pointer;
-      border: none;
+      transition: border-color 0.2s ease;
     }
 
-    .coming-soon-btn-primary {
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      color: #fff;
-      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    .coming-soon-btn:hover {
+      border-color: var(--accent-border);
     }
 
-    .coming-soon-btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 25px rgba(99, 102, 241, 0.45);
-      background: linear-gradient(135deg, #7c7ff7, #9d75f8);
-    }
-
-    .coming-soon-btn-primary:active {
-      transform: translateY(0);
-    }
-
-    .coming-soon-btn-primary svg {
-      width: 18px;
-      height: 18px;
+    .coming-soon-btn svg {
+      width: 15px;
+      height: 15px;
       fill: none;
       stroke: currentColor;
       stroke-width: 2;
       stroke-linecap: round;
       stroke-linejoin: round;
+      color: var(--text-tertiary);
     }
 
-    @media (max-width: 600px) {
-      .coming-soon-card {
-        padding: 2rem 1.5rem;
-      }
-      .coming-soon-card h2 {
-        font-size: 1.5rem;
-      }
-      .coming-soon-card p {
-        font-size: 0.9rem;
-      }
+    @media (max-width: 480px) {
+      .coming-soon-card { padding: 24px 20px; }
+      .coming-soon-card h2 { font-size: 1.3rem; }
+      .coming-soon-title-block { flex-direction: column; gap: 8px; }
     }
   </style>
 </head>
@@ -200,29 +187,42 @@
   <!-- ======================== COMING SOON OVERLAY ======================== -->
   <div class="coming-soon-overlay">
     <div class="coming-soon-card">
-      <div class="coming-soon-icon">
-        <svg viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
-        </svg>
+
+      <!-- Breadcrumb estilo doc-breadcrumb -->
+      <div class="coming-soon-eyebrow">
+        <span>HOSA</span>
+        <span class="cs-sep">/</span>
+        <span>Documentation</span>
+        <span class="cs-sep">/</span>
+        <span class="cs-current">Configuration</span>
       </div>
-      <h2>Coming Soon</h2>
+
+      <!-- Título estilo doc-title-block -->
+      <div class="coming-soon-title-block">
+        <span class="coming-soon-section-tag">§7</span>
+        <h2>Coming Soon</h2>
+      </div>
+
       <p>
-        This documentation page is currently being finalized. Full configuration reference will be available shortly.
+        This documentation page is currently being finalized.
+        Full configuration reference will be available shortly.
       </p>
-      <div class="coming-soon-badge">
+
+      <!-- Callout estilo doc-callout-note -->
+      <div class="coming-soon-callout">
         <span class="coming-soon-dot"></span>
-        Under Development
+        <span>Under Development</span>
       </div>
-      <div class="coming-soon-actions">
-        <a href="/" class="coming-soon-btn coming-soon-btn-primary">
-          <svg viewBox="0 0 24 24">
-            <path d="M19 12H5"/>
-            <polyline points="12 19 5 12 12 5"/>
-          </svg>
-          Back to Home
-        </a>
-      </div>
+
+      <!-- Botão estilo doc-nav-footer -->
+      <a href="/" class="coming-soon-btn">
+        <svg viewBox="0 0 24 24">
+          <path d="M19 12H5"/>
+          <polyline points="12 19 5 12 12 5"/>
+        </svg>
+        Back to Home
+      </a>
+
     </div>
   </div>
 
@@ -240,7 +240,7 @@
         <li><a href="/">Overview</a></li>
         <li><a href="/#motivation">Motivation</a></li>
         <li><a href="/#architecture">Architecture</a></li>
-        <li class="active"><a href="/docs/">Documentation</a></li>
+        <li class="active"><a href="/#docs">Documentation</a></li>
       </ul>
       <div class="nav-right">
         <div class="lang-switch">
@@ -263,7 +263,7 @@
       <nav class="doc-breadcrumb" aria-label="Breadcrumb">
         <a href="/">HOSA</a>
         <span class="bc-sep">/</span>
-        <a href="/docs/">Documentation</a>
+        <a href="/#docs">Documentation</a>
         <span class="bc-sep">/</span>
         <span class="bc-current">Configuration</span>
       </nav>
@@ -1481,8 +1481,8 @@
         </div>
         <ul class="footer-links">
           <li><a href="https://github.com/bricio-sr/hosa" target="_blank" rel="noopener">GitHub</a></li>
-          <li><a href="https://github.com/bricio-sr/hosa/whitepaper-en.md">Whitepaper</a></li>
-          <li><a href="/docs/">Documentation</a></li>
+          <li><a href="whitepaper.pdf">Whitepaper</a></li>
+          <li><a href="/#docs">Documentation</a></li>
         </ul>
       </div>
       <div class="footer-bottom">

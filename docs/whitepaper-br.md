@@ -213,6 +213,8 @@ $$D_M(\vec{x}) = \sqrt{(\vec{x} - \vec{\mu})^T \Sigma^{-1} (\vec{x} - \vec{\mu})
 
 A Matriz de Covariância $\Sigma$ captura as correlações entre todas as variáveis. A sua inversa $\Sigma^{-1}$ pondera as dimensões de acordo com sua variância e interdependência. Um vetor $\vec{x}(t)$ que se afasta do perfil basal em dimensões correlacionadas de maneira não-usual produz um $D_M$ elevado, mesmo que nenhuma variável individual tenha excedido um limiar absoluto.
 
+Para uma revisão abrangente de métodos de detecção de outliers, ver Aggarwal (2017).
+
 ### 4.3. A Derivada Temporal e o Problema da Estabilidade Numérica
 
 O HOSA não atua sobre o valor instantâneo de $D_M$, mas sobre a sua **taxa de variação temporal** — a velocidade e a aceleração com que o sistema se afasta da homeostase.
@@ -302,17 +304,6 @@ A validação experimental (documentada separadamente no plano experimental) inc
    - Estimação robusta (MCD);
    - Mahalanobis com transformação prévia (e.g., Box-Cox multivariada para redução de assimetria);
 4. **Análise de impacto no footprint computacional** de cada alternativa.
-
-**Referências adicionais para esta seção:**
-
-- Gnanadesikan, R., & Kettenring, J. R. (1972). Robust Estimates, Residuals, and Outlier Detection with Multiresponse Data. *Biometrics*, 28(1), 81–124.
-- Hubert, M., Debruyne, M., & Rousseeuw, P. J. (2018). Minimum Covariance Determinant and Extensions. *WIREs Computational Statistics*, 10(3), e1421.
-- Mardia, K. V. (1970). Measures of Multivariate Skewness and Kurtosis with Applications. *Biometrika*, 57(3), 519–530.
-- Penny, K. I. (1996). Appropriate Critical Values When Testing for a Single Multivariate Outlier by Using the Mahalanobis Distance. *Journal of the Royal Statistical Society: Series C*, 45(1), 73–81.
-- Rousseeuw, P. J. (1984). Least Median of Squares Regression. *Journal of the American Statistical Association*, 79(388), 871–880.
-- Rousseeuw, P. J., & Van Driessen, K. (1999). A Fast Algorithm for the Minimum Covariance Determinant Estimator. *Technometrics*, 41(3), 212–223.
-- Henze, N., & Zirkler, B. (1990). A Class of Invariant Consistent Tests for Multivariate Normality. *Communications in Statistics — Theory and Methods*, 19(10), 3595–3617.
-- Engel, P. M., & Heinen, M. R. (2010). Incremental Learning of Multivariate Gaussian Mixture Models. *Proceedings of the Brazilian Symposium on Artificial Intelligence (SBIA)*.
 
 ---
 
@@ -595,7 +586,7 @@ O operador humano ou o sistema de automação recebe o webhook enviado pelo HOSA
 {
   "severity": "warning",
   "node": "worker-node-07",
-  "timestamp": "2024-01-15T14:23:09.000Z",
+  "timestamp": "2026-03-04T22:23:09.000Z",
   "hosa_level": 2,
   "d_m": 4.7,
   "d_m_derivative": 2.1,
@@ -623,7 +614,7 @@ Se o HOSA não estivesse operando:
 
 ```
 t=0s      t=1s      t=2s      t=4s       t=8s       t=15s      t=40s     t=100s
- │         │         │         │          │           │          │          │
+ │         │         │         │          │          │          │          │
  │ Leak    │ HOSA    │ HOSA    │ HOSA     │ HOSA     │Prometheus│ SEM HOSA:│Prometheus
  │ inicia  │ detecta │ contém  │ confirma │estabiliza│1° scrape │ OOM-Kill │ alerta
  │         │ (N1)    │ (N2)    │ eficácia │ sistema  │ pós-leak │ (crash)  │ (tarde)
@@ -1645,6 +1636,8 @@ Horn, P. (2001). Autonomic Computing: IBM's Perspective on the State of Informat
 
 Hubert, M., Debruyne, M., & Rousseeuw, P. J. (2018). Minimum Covariance Determinant and Extensions. *WIREs Computational Statistics*, 10(3), e1421.
 
+Isovalent. (2022). Tetragon: eBPF-based Security Observability and Runtime Enforcement. Isovalent Open Source. https://tetragon.io/
+
 Lamport, L. (1998). The Part-Time Parliament. *ACM Transactions on Computer Systems*, 16(2), 133–169.
 
 Li, T., Sahu, A. K., Talwalkar, A., & Smith, V. (2020). Federated Learning: Challenges, Methods, and Future Directions. *IEEE Signal Processing Magazine*, 37(3), 50–60.
@@ -1658,6 +1651,8 @@ Ongaro, D., & Ousterhout, J. (2014). In Search of an Understandable Consensus Al
 Penny, K. I. (1996). Appropriate Critical Values When Testing for a Single Multivariate Outlier by Using the Mahalanobis Distance. *Journal of the Royal Statistical Society: Series C*, 45(1), 73–81.
 
 Poettering, L. (2020). systemd-oomd: A userspace out-of-memory (OOM) killer. *systemd Documentation*. https://www.freedesktop.org/software/systemd/man/systemd-oomd.service.html
+
+Prometheus Authors. (2012). Prometheus: Monitoring System and Time Series Database. Cloud Native Computing Foundation. https://prometheus.io/
 
 Rousseeuw, P. J. (1984). Least Median of Squares Regression. *Journal of the American Statistical Association*, 79(388), 871–880.
 

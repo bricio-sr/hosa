@@ -94,22 +94,20 @@ func main() {
 			}
 
 			// Passo 3 — ANALISAR
-			stress, level, err := cortex.Analyze()
+			stress, dmDot, level, err := cortex.Analyze()
 			if err != nil {
 				log.Printf("HOSA: erro na análise do córtex: %v", err)
 				continue
 			}
 
 			// Passo 4 — REAGIR
-			interval = react(mot, stress, level, memTotal)
+			interval = react(mot, stress, dmDot, level, memTotal)
 		}
 	}
 }
 
 // react aciona o motor e retorna o intervalo de próxima amostragem.
-func react(mot *motor.CgroupMotor, stress float64, level brain.AlertLevel, memTotal uint64) time.Duration {
-	// Converte brain.AlertLevel → motor.ContainmentLevel.
-	// Os valores são idênticos (iota 0..3) — a conversão é segura.
+func react(mot *motor.CgroupMotor, stress, dmDot float64, level brain.AlertLevel, memTotal uint64) time.Duration {
 	containLevel := motor.ContainmentLevel(level)
 
 	if err := mot.Apply(containLevel, memTotal); err != nil {
@@ -121,15 +119,15 @@ func react(mot *motor.CgroupMotor, stress float64, level brain.AlertLevel, memTo
 		return normalInterval
 
 	case brain.LevelVigilance:
-		log.Printf("HOSA [VIGILÂNCIA]  stress=%.4f — monitoramento intensificado", stress)
+		log.Printf("HOSA [VIGILÂNCIA]  D_M=%.4f dD_M/dt=%.4f — monitoramento intensificado", stress, dmDot)
 		return vigilanceInterval
 
 	case brain.LevelContainment:
-		log.Printf("HOSA [CONTENÇÃO]   stress=%.4f — cgroups aplicados", stress)
+		log.Printf("HOSA [CONTENÇÃO]   D_M=%.4f dD_M/dt=%.4f — cgroups aplicados", stress, dmDot)
 		return vigilanceInterval
 
 	case brain.LevelProtection:
-		log.Printf("HOSA [PROTEÇÃO]    stress=%.4f — contenção máxima aplicada", stress)
+		log.Printf("HOSA [PROTEÇÃO]    D_M=%.4f dD_M/dt=%.4f — contenção máxima aplicada", stress, dmDot)
 		return vigilanceInterval
 
 	default:

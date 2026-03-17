@@ -167,7 +167,7 @@ func parseELF(data []byte) (*BPFObject, error) {
 				obj.License = string(raw[:end])
 			}
 
-		case name == ".maps" || (s.shType == shtProgbits && len(name) > 0 && name[0] == '.'):
+		case name == "maps" || name == ".maps" || (s.shType == shtProgbits && len(name) > 0 && name[0] == '.'):
 			// Seção de definições de mapas (formato BTF maps ou legado)
 			// O sensors.c usa o formato de struct anônima dentro de SEC(".maps").
 			// O clang emite a definição como uma seção PROGBITS com 4 campos uint32.

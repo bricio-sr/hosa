@@ -74,59 +74,86 @@ type StressReading struct {
 // PredictiveCortex é o "cérebro" do HOSA.
 // Além de calcular D_M, rastreia sua derivada temporal dD_M/dt e aplica
 // histerese para evitar oscilação entre níveis.
+//
+// O basal (média e covariância) é mantido via WelfordState — atualização
+// incremental O(p²) por ciclo, com habituação automática a mudanças permanentes.
 type PredictiveCortex struct {
-	buffer *state.RingBuffer
-	config PredictorConfig
+	buffer  *state.RingBuffer
+	config  PredictorConfig
+	welford *WelfordState // estado incremental do basal
 
 	// Estado interno entre ciclos
-	prev          *StressReading // última leitura válida
-	currentLevel  AlertLevel     // nível atual (com histerese)
-	belowCount    int            // ciclos consecutivos abaixo do limiar atual
+	prev         *StressReading // última leitura válida
+	currentLevel AlertLevel     // nível atual (com histerese)
+	belowCount   int            // ciclos consecutivos abaixo do limiar atual
 }
 
 // NewPredictiveCortex inicializa o Córtex com um buffer e configuração.
+// O número de variáveis (vars) deve corresponder ao numVars do RingBuffer.
 func NewPredictiveCortex(buf *state.RingBuffer, cfg PredictorConfig) *PredictiveCortex {
+	// Extrai o número de variáveis do buffer via snapshot vazio
+	snap := buf.Snapshot()
+	vars := snap.Cols
+	if vars == 0 {
+		vars = 1 // fallback seguro para cold-start
+	}
+
 	return &PredictiveCortex{
 		buffer:       buf,
 		config:       cfg,
+		welford:      NewWelfordState(vars),
 		currentLevel: LevelHomeostasis,
 	}
 }
 
 // Analyze é o método principal do Córtex.
-// Retorna stress (D_M), dmDot (dD_M/dt) e o AlertLevel resultante.
+// Incorpora a leitura mais recente ao WelfordState e retorna:
+// stress (D_M), dmDot (dD_M/dt) e o AlertLevel resultante.
 func (pc *PredictiveCortex) Analyze() (stress float64, dmDot float64, level AlertLevel, err error) {
 	if !pc.buffer.IsReady() {
 		return 0, 0, LevelHomeostasis, nil
 	}
 
 	snap := pc.buffer.Snapshot()
-	if snap.Rows < pc.config.MinSamples {
+	if snap.Rows < 2 {
 		return 0, 0, LevelHomeostasis, nil
 	}
 
-	// --- Aprende o basal ---
-	mean := linalg.MeanVector(snap)
+	// --- Atualiza o basal incremental com a leitura mais recente ---
+	lastRow := snap.Rows - 1
+	reading := make([]float64, snap.Cols)
+	for j := 0; j < snap.Cols; j++ {
+		reading[j] = snap.Get(lastRow, j)
+	}
+	if err = pc.welford.Update(reading); err != nil {
+		return 0, 0, LevelHomeostasis, err
+	}
 
-	cov, err := linalg.CovarianceMatrix(snap)
+	// Aguarda o mínimo de amostras para análise confiável
+	if !pc.welford.IsReady(pc.config.MinSamples) {
+		return 0, 0, LevelHomeostasis, nil
+	}
+
+	// --- Obtém o basal atual do WelfordState (O(p²), não O(n·p²)) ---
+	mean := pc.welford.Mean()
+
+	cov, err := pc.welford.Covariance()
 	if err != nil {
 		return 0, 0, LevelHomeostasis, err
 	}
 
 	invCov, err := cov.Inverse()
 	if err != nil {
-		// Matriz singular: cold-start ou variáveis sem variância ainda.
+		// Matriz singular: variáveis sem variância ainda (cold-start).
 		return 0, 0, LevelHomeostasis, nil
 	}
 
 	model := NewHomeostasisModel(mean, invCov)
 
-	// --- Avalia o estado atual (última linha do snapshot) ---
-	vars := snap.Cols
-	current := linalg.NewMatrix(vars, 1)
-	lastRow := snap.Rows - 1
-	for j := 0; j < vars; j++ {
-		current.Set(j, 0, snap.Get(lastRow, j))
+	// --- Avalia o estado atual contra o basal ---
+	current := linalg.NewMatrix(snap.Cols, 1)
+	for j := 0; j < snap.Cols; j++ {
+		current.Set(j, 0, reading[j])
 	}
 
 	dm, err := model.CalculateStress(current)

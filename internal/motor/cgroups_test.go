@@ -87,8 +87,9 @@ func TestApply_Protection_SetsBothLimits(t *testing.T) {
 		t.Fatalf("Apply(Protection) falhou: %v", err)
 	}
 
-	expectedHigh := uint64(float64(totalMem) * fractionProtectionHigh)
-	expectedMax := uint64(float64(totalMem) * fractionProtectionMax)
+	total := float64(totalMem)
+	expectedHigh := uint64(total * fractionProtectionHigh)
+	expectedMax := uint64(total * fractionProtectionMax)
 
 	gotHigh := readFile(t, m.cgPath, "memory.high")
 	gotMax := readFile(t, m.cgPath, "memory.max")

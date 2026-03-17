@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/bricio-sr/hosa/internal/bpf"
-	"github.com/cilium/ebpf/link"
 )
 
 type Collector struct {

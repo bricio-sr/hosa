@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/bricio-sr/hosa/internal/brain"
+	"github.com/bricio-sr/hosa/internal/motor"
 	"github.com/bricio-sr/hosa/internal/sensor"
 	"github.com/bricio-sr/hosa/internal/state"
+	"github.com/bricio-sr/hosa/internal/syscgroup"
 )
 
-// Parâmetros do loop principal.
 const (
 	// ringBufferCapacity é quantas amostras de histórico o HOSA mantém em memória.
 	// 300 amostras @ 1s/amostra = 5 minutos de histórico para aprender o basal.
@@ -26,33 +27,43 @@ const (
 	// normalInterval é a frequência de coleta em homeostase.
 	normalInterval = 1 * time.Second
 
-	// vigilanceInterval é a frequência de coleta em Nível 1 (Vigilância).
-	// O HOSA aumenta a amostragem ao detectar o primeiro desvio — como pupilas dilatando.
+	// vigilanceInterval é a frequência de coleta em Nível 1+ (Vigilância/Contenção/Proteção).
 	vigilanceInterval = 100 * time.Millisecond
 )
 
 func main() {
 	log.Println("HOSA: Homeostasis Operating System Agent — iniciando...")
 
-	// --- Inicializa as camadas ---
-
-	// Camada 1: Memória de Curto Prazo (Sistema Límbico)
-	// O RingBuffer armazena o histórico recente de métricas de forma thread-safe.
+	// --- Camada 1: Memória de Curto Prazo (Sistema Límbico) ---
 	buf := state.NewRingBuffer(ringBufferCapacity, numVars)
 
-	// Camada 2: Sensor eBPF (Sistema Nervoso Periférico)
-	// O Collector pendura um programa no Kernel para capturar eventos de alocação.
+	// --- Camada 2: Sensor eBPF (Sistema Nervoso Periférico) ---
 	col := &sensor.Collector{}
 	if err := col.Start(); err != nil {
 		log.Fatalf("HOSA: falha ao inicializar sensor eBPF: %v", err)
 	}
 	defer col.Close()
 
-	// Camada 3: Córtex Preditivo (Cérebro)
-	// O PredictiveCortex analisa o buffer e retorna o nível de alerta.
+	// --- Camada 3: Córtex Preditivo (Cérebro) ---
 	cortex := brain.NewPredictiveCortex(buf, brain.DefaultConfig())
 
-	// --- Configura o shutdown gracioso via SIGINT / SIGTERM ---
+	// --- Camada 4: Motor (Sistema Motor) ---
+	// Garante que o cgroup /sys/fs/cgroup/hosa existe e inicializa o motor.
+	cgPath, err := syscgroup.EnsureHosaCgroup()
+	if err != nil {
+		log.Fatalf("HOSA: falha ao inicializar cgroup: %v", err)
+	}
+	mot := motor.NewCgroupMotor(cgPath)
+
+	// Lê o total de memória disponível uma vez na inicialização.
+	// Este valor é usado como referência para calcular os limites proporcionais.
+	memTotal, err := readMemTotal()
+	if err != nil {
+		log.Fatalf("HOSA: falha ao ler memória total do host: %v", err)
+	}
+	log.Printf("HOSA: memória total do host: %d bytes (%.1f GB)", memTotal, float64(memTotal)/(1<<30))
+
+	// --- Shutdown gracioso ---
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -61,60 +72,140 @@ func main() {
 	interval := normalInterval
 
 	// --- Loop Principal: O Arco Reflexo ---
-	// Sensor → Memória → Córtex → Motor (a ser implementado)
+	// Sensor → Memória → Córtex → Motor
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("HOSA: sinal de encerramento recebido. Desligando...")
+			log.Println("HOSA: sinal de encerramento recebido. Restaurando homeostase e desligando...")
+			// Garante que os limites de contenção são removidos antes de sair.
+			if err := mot.Apply(motor.LevelHomeostasis, memTotal); err != nil {
+				log.Printf("HOSA: erro ao restaurar homeostase no shutdown: %v", err)
+			}
 			return
 
 		case <-time.After(interval):
-			// Passo 1 — SENTIR: coleta as métricas atuais via eBPF
+			// Passo 1 — SENTIR
 			reading := []float64{col.ReadMetrics()}
 
-			// Passo 2 — MEMORIZAR: insere no buffer circular
+			// Passo 2 — MEMORIZAR
 			if err := buf.Insert(reading); err != nil {
 				log.Printf("HOSA: erro ao inserir no buffer: %v", err)
 				continue
 			}
 
-			// Passo 3 — ANALISAR: o Córtex avalia o estado atual vs. basal
+			// Passo 3 — ANALISAR
 			stress, level, err := cortex.Analyze()
 			if err != nil {
 				log.Printf("HOSA: erro na análise do córtex: %v", err)
 				continue
 			}
 
-			// Passo 4 — REAGIR: ajusta comportamento conforme o nível de alerta
-			interval = react(stress, level)
+			// Passo 4 — REAGIR
+			interval = react(mot, stress, level, memTotal)
 		}
 	}
 }
 
-// react loga o estado atual e retorna o intervalo de próxima amostragem.
-// Esta função será expandida para acionar o Motor (cgroups/XDP) nos próximos commits.
-func react(stress float64, level brain.AlertLevel) time.Duration {
+// react aciona o motor e retorna o intervalo de próxima amostragem.
+func react(mot *motor.CgroupMotor, stress float64, level brain.AlertLevel, memTotal uint64) time.Duration {
+	// Converte brain.AlertLevel → motor.ContainmentLevel.
+	// Os valores são idênticos (iota 0..3) — a conversão é segura.
+	containLevel := motor.ContainmentLevel(level)
+
+	if err := mot.Apply(containLevel, memTotal); err != nil {
+		log.Printf("HOSA: erro ao aplicar contenção (nível=%d): %v", level, err)
+	}
+
 	switch level {
 	case brain.LevelHomeostasis:
-		// Sistema saudável. Amostragem normal.
 		return normalInterval
 
 	case brain.LevelVigilance:
-		// Desvio detectado. Aumenta a frequência de amostragem para rastrear a progressão.
-		log.Printf("HOSA [VIGILÂNCIA] stress=%.4f — monitoramento intensificado", stress)
+		log.Printf("HOSA [VIGILÂNCIA]  stress=%.4f — monitoramento intensificado", stress)
 		return vigilanceInterval
 
 	case brain.LevelContainment:
-		// Estresse confirmado. TODO: acionar motor/cgroups.go para conter o processo.
-		log.Printf("HOSA [CONTENÇÃO]  stress=%.4f — contenção via cgroups (não implementado)", stress)
+		log.Printf("HOSA [CONTENÇÃO]   stress=%.4f — cgroups aplicados", stress)
 		return vigilanceInterval
 
 	case brain.LevelProtection:
-		// Risco de colapso iminente. TODO: acionar motor/signals.go para ações drásticas.
-		log.Printf("HOSA [PROTEÇÃO]   stress=%.4f — proteção do host (não implementado)", stress)
+		log.Printf("HOSA [PROTEÇÃO]    stress=%.4f — contenção máxima aplicada", stress)
 		return vigilanceInterval
 
 	default:
 		return normalInterval
 	}
+}
+
+// readMemTotal lê a memória total do host em bytes a partir de /proc/meminfo.
+// Usa apenas stdlib — sem dependências externas.
+func readMemTotal() (uint64, error) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, err
+	}
+
+	// Formato da linha: "MemTotal:       16384000 kB"
+	for _, line := range splitLines(string(data)) {
+		if len(line) > 9 && line[:9] == "MemTotal:" {
+			var kb uint64
+			// Extrai o número da linha manualmente — sem fmt.Sscanf para não importar fmt
+			fields := splitFields(line[9:])
+			if len(fields) == 0 {
+				continue
+			}
+			kb = parseUint(fields[0])
+			return kb * 1024, nil // converte kB → bytes
+		}
+	}
+
+	return 0, os.ErrNotExist
+}
+
+// splitLines divide uma string por '\n' sem alocar um slice de strings desnecessário.
+func splitLines(s string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+	return lines
+}
+
+// splitFields divide uma string por espaços, ignorando múltiplos espaços consecutivos.
+func splitFields(s string) []string {
+	var fields []string
+	start := -1
+	for i := 0; i < len(s); i++ {
+		if s[i] != ' ' && s[i] != '\t' {
+			if start == -1 {
+				start = i
+			}
+		} else {
+			if start != -1 {
+				fields = append(fields, s[start:i])
+				start = -1
+			}
+		}
+	}
+	if start != -1 {
+		fields = append(fields, s[start:])
+	}
+	return fields
+}
+
+// parseUint converte uma string decimal para uint64 sem usar strconv,
+// retornando 0 para qualquer entrada inválida.
+func parseUint(s string) uint64 {
+	var n uint64
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return n
+		}
+		n = n*10 + uint64(c-'0')
+	}
+	return n
 }

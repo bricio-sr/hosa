@@ -172,6 +172,10 @@ func splitLines(s string) []string {
 			start = i + 1
 		}
 	}
+	// Inclui o trecho final quando a string não termina com '\n'
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
 	return lines
 }
 

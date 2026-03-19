@@ -62,14 +62,22 @@ func (obj *BPFObject) RelocateInsns(fds MapFDs) error {
 			return fmt.Errorf("RelocateInsns: offset %d fora dos limites do bytecode", byteOffset)
 		}
 
-		// Instrução BPF_LD_IMM64 (slot 0 de 2):
-		// bytes [0]   = opcode (0x18)
-		// bytes [1]   = dst_reg | src_reg (src = BPF_PSEUDO_MAP_FD = 1)
-		// bytes [2:4] = off (0)
-		// bytes [4:8] = imm_lo = map_fd  ← aqui injetamos o fd
+		// Instrução BPF_LD_IMM64 (slot 0 de 2), layout de 8 bytes:
+		// byte [0]   = opcode = 0x18
+		// byte [1]   = (dst_reg & 0xf) | (src_reg << 4)
+		//              src_reg DEVE ser BPF_PSEUDO_MAP_FD (1) para o verifier
+		//              reconhecer o imm como map_ptr
+		// bytes[2:4] = off (0)
+		// bytes[4:8] = imm_lo = map_fd
+
+		// Preserva dst_reg (nibble baixo) e força src_reg=1 (nibble alto)
+		dstReg := obj.Insns[byteOffset+1] & 0x0f
+		obj.Insns[byteOffset+1] = dstReg | (bpfPseudoMapFD << 4)
+
+		// Injeta o fd no campo imm do slot 0
 		binary.LittleEndian.PutUint32(obj.Insns[byteOffset+4:], uint32(fd))
 
-		// Slot 1 (bytes [8:16]): opcode=0, imm_hi=0 — já zerado pelo clang
+		// Slot 1 (bytes [8:16]): opcode=0, src_reg=0, imm_hi=0 — já zerado pelo clang
 	}
 	return nil
 }

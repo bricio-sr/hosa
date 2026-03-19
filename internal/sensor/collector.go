@@ -46,12 +46,12 @@ type Collector struct {
 //  3. Carrega o programa no kernel (BPF_PROG_LOAD)
 //  4. Anexa ao tracepoint sys_enter_brk (perf_event_open + ioctl)
 func (c *Collector) Start() error {
+	// Passo 1 — Parseia o ELF (falha cedo se sensors.o não existe)
 	objPath, err := resolveObjectPath(bpfObjectPath)
 	if err != nil {
 		return fmt.Errorf("sensor.Start: %w", err)
 	}
 
-	// Passo 1 — Parseia o ELF
 	obj, err := sysbpf.LoadObject(objPath)
 	if err != nil {
 		return fmt.Errorf("sensor.Start: falha ao parsear ELF %q: %w", objPath, err)

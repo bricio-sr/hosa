@@ -15,7 +15,10 @@ func newTestMotor(t *testing.T) (*CgroupMotor, func()) {
 	if err != nil {
 		t.Fatalf("falha ao criar cgroup simulado: %v", err)
 	}
-	return NewCgroupMotor(dir), func() { os.RemoveAll(dir) }
+	m := NewCgroupMotor(dir)
+	// Força lastLevel para um valor sentinela para que o primeiro Apply sempre execute.
+	m.lastLevel = -1
+	return m, func() { os.RemoveAll(dir) }
 }
 
 func readFile(t *testing.T, cgPath, name string) string {

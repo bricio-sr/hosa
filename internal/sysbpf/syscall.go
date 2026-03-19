@@ -7,6 +7,7 @@ package sysbpf
 
 import (
 	"fmt"
+	"os"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -169,18 +170,21 @@ func LoadProg(progType uint32, insns []byte, license string, logBuf []byte) (Pro
 // AttachTracepoint anexa um programa eBPF a um tracepoint do kernel.
 // Retorna um file descriptor que deve ser mantido aberto enquanto o programa
 // estiver ativo — fechar este fd desanexa o programa automaticamente.
-//
-// subsystem: subsistema do tracepoint (ex: "syscalls")
-// event: nome do evento (ex: "sys_enter_brk")
-// progFD: file descriptor do programa eBPF carregado via LoadProg
 func AttachTracepoint(subsystem, event string, progFD ProgFD) (int, error) {
-	// Abre o tracepoint via perf_event_open(2)
-	// O kernel expõe o ID do tracepoint em:
-	// /sys/kernel/debug/tracing/events/<subsystem>/<event>/id
+	// O kernel expõe o ID do tracepoint em dois caminhos possíveis:
+	// 1. /sys/kernel/debug/tracing/events/<subsystem>/<event>/id  (debugfs montado)
+	// 2. /sys/kernel/tracing/events/<subsystem>/<event>/id        (tracefs direto)
 	idPath := fmt.Sprintf("/sys/kernel/debug/tracing/events/%s/%s/id", subsystem, event)
+	if _, err := os.Stat(idPath); err != nil {
+		// debugfs não montado — tenta o caminho direto do tracefs
+		idPath = fmt.Sprintf("/sys/kernel/tracing/events/%s/%s/id", subsystem, event)
+	}
+
 	tracepointID, err := readTracepointID(idPath)
 	if err != nil {
-		return -1, fmt.Errorf("AttachTracepoint: não foi possível ler o ID do tracepoint %s/%s: %w", subsystem, event, err)
+		return -1, fmt.Errorf("AttachTracepoint: não foi possível ler ID do tracepoint %s/%s.\n"+
+			"  Tente: sudo mount -t debugfs none /sys/kernel/debug\n"+
+			"  Erro original: %w", subsystem, event, err)
 	}
 
 	// perf_event_attr para tracepoint

@@ -68,7 +68,14 @@ func (c *Collector) Start() error {
 		return fmt.Errorf("sensor.Start: falha ao criar mapa eBPF: %w", err)
 	}
 
-	// Passo 3 — Carrega o programa no kernel
+	// Passo 3 — Resolve relocações: injeta o map_fd real nas instruções BPF_LD_IMM64.
+	// Sem este passo, o verifier rejeita com "R1 type=scalar expected=map_ptr".
+	if err = obj.RelocateInsns(sysbpf.MapFDs{mapName: c.mapFD}); err != nil {
+		_ = unix.Close(int(c.mapFD))
+		return fmt.Errorf("sensor.Start: falha ao resolver relocações: %w", err)
+	}
+
+	// Passo 4 — Carrega o programa no kernel
 	// O buffer de log captura a saída do verifier em caso de rejeição.
 	verifierLog := make([]byte, verifierLogSize)
 
@@ -78,7 +85,7 @@ func (c *Collector) Start() error {
 		return fmt.Errorf("sensor.Start: falha ao carregar programa eBPF: %w", err)
 	}
 
-	// Passo 4 — Anexa ao tracepoint
+	// Passo 5 — Anexa ao tracepoint
 	c.eventFD, err = sysbpf.AttachTracepoint(tracepointSubsystem, tracepointEvent, c.progFD)
 	if err != nil {
 		_ = unix.Close(int(c.progFD))

@@ -116,6 +116,7 @@ func react(mot *motor.CgroupMotor, stress, dmDot float64, level brain.AlertLevel
 
 	switch level {
 	case brain.LevelHomeostasis:
+		// Sem log em homeostase — reduz ruído no output normal.
 		return normalInterval
 
 	case brain.LevelVigilance:

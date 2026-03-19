@@ -44,7 +44,8 @@ const (
 
 // CgroupMotor aplica ações de contenção em um cgroup v2 específico.
 type CgroupMotor struct {
-	cgPath string // caminho do cgroup monitorado (ex: /sys/fs/cgroup/hosa)
+	cgPath   string           // caminho do cgroup monitorado
+	lastLevel ContainmentLevel // último nível aplicado — evita logs repetidos
 }
 
 // NewCgroupMotor inicializa o motor para um cgroup já existente.
@@ -58,6 +59,12 @@ func NewCgroupMotor(cgPath string) *CgroupMotor {
 // memTotalBytes é o limite total de memória do cgroup (lido de memory.max antes
 // de qualquer contenção, ou do total de RAM do host como fallback).
 func (m *CgroupMotor) Apply(level ContainmentLevel, memTotalBytes uint64) error {
+	// Só aplica e loga quando o nível muda — evita ruído a cada tick.
+	if level == m.lastLevel {
+		return nil
+	}
+	m.lastLevel = level
+
 	switch level {
 
 	case LevelHomeostasis, LevelVigilance:

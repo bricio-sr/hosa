@@ -29,6 +29,11 @@ const (
 
 	// vigilanceInterval é a frequência de coleta em Nível 1+ (Vigilância/Contenção/Proteção).
 	vigilanceInterval = 100 * time.Millisecond
+
+	// logEveryN controla a frequência de log durante recuperação (derivada negativa).
+	// A 100ms/tick, logEveryN=10 gera um log a cada ~1 segundo durante a descida.
+	// Em escalada ou níveis altos (Contenção/Proteção), loga sempre.
+	logEveryN = 10
 )
 
 func main() {
@@ -70,6 +75,7 @@ func main() {
 	log.Println("HOSA: sistema online. Aguardando amostras para calibrar o basal...")
 
 	interval := normalInterval
+	var tickCount int
 
 	// --- Loop Principal: O Arco Reflexo ---
 	// Sensor → Memória → Córtex → Motor
@@ -77,13 +83,14 @@ func main() {
 		select {
 		case <-ctx.Done():
 			log.Println("HOSA: sinal de encerramento recebido. Restaurando homeostase e desligando...")
-			// Garante que os limites de contenção são removidos antes de sair.
 			if err := mot.Apply(motor.LevelHomeostasis, memTotal); err != nil {
 				log.Printf("HOSA: erro ao restaurar homeostase no shutdown: %v", err)
 			}
 			return
 
 		case <-time.After(interval):
+			tickCount++
+
 			// Passo 1 — SENTIR
 			reading := []float64{col.ReadMetrics()}
 
@@ -101,13 +108,14 @@ func main() {
 			}
 
 			// Passo 4 — REAGIR
-			interval = react(mot, stress, dmDot, level, memTotal)
+			interval = react(mot, stress, dmDot, level, memTotal, tickCount)
 		}
 	}
 }
 
 // react aciona o motor e retorna o intervalo de próxima amostragem.
-func react(mot *motor.CgroupMotor, stress, dmDot float64, level brain.AlertLevel, memTotal uint64) time.Duration {
+// tickCount é usado para suprimir logs repetitivos durante recuperação gradual.
+func react(mot *motor.CgroupMotor, stress, dmDot float64, level brain.AlertLevel, memTotal uint64, tick int) time.Duration {
 	containLevel := motor.ContainmentLevel(level)
 
 	if err := mot.Apply(containLevel, memTotal); err != nil {
@@ -116,18 +124,23 @@ func react(mot *motor.CgroupMotor, stress, dmDot float64, level brain.AlertLevel
 
 	switch level {
 	case brain.LevelHomeostasis:
-		// Sem log em homeostase — reduz ruído no output normal.
 		return normalInterval
 
 	case brain.LevelVigilance:
-		log.Printf("HOSA [VIGILÂNCIA]  D_M=%.4f dD_M/dt=%.4f — monitoramento intensificado", stress, dmDot)
+		// Em recuperação (derivada negativa), loga só a cada logEveryN ticks (~1s).
+		// Em escalada (derivada positiva), loga sempre — não perder eventos críticos.
+		if dmDot >= 0 || tick%logEveryN == 0 {
+			log.Printf("HOSA [VIGILÂNCIA]  D_M=%.4f dD_M/dt=%.4f — monitoramento intensificado", stress, dmDot)
+		}
 		return vigilanceInterval
 
 	case brain.LevelContainment:
+		// Contenção sempre loga — é uma ação real sobre o sistema.
 		log.Printf("HOSA [CONTENÇÃO]   D_M=%.4f dD_M/dt=%.4f — cgroups aplicados", stress, dmDot)
 		return vigilanceInterval
 
 	case brain.LevelProtection:
+		// Proteção sempre loga.
 		log.Printf("HOSA [PROTEÇÃO]    D_M=%.4f dD_M/dt=%.4f — contenção máxima aplicada", stress, dmDot)
 		return vigilanceInterval
 

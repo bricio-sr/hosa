@@ -3,12 +3,16 @@
 #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
 
-// Licença obrigatória. Sem isso o Kernel recusa injetar o código.
-// A camada C TEM que ser GPL para usar as funções avançadas do eBPF.
 char __license[] SEC("license") = "GPL";
 
-// Estrutura clássica de mapas eBPF (Necessária já que não estamos usando BTF/Cilium)
-// O seu parser Go vai ler exatamente esse bloco de memória no ELF
+// Índices do vetor de estado — devem ser sincronizados com sensor/collector.go
+#define IDX_CPU_RUN_QUEUE   0
+#define IDX_MEM_BRK_CALLS   1
+#define IDX_MEM_PAGE_FAULTS 2
+#define IDX_IO_BLOCK_OPS    3
+#define NUM_VARS            4
+
+// Formato legado de mapa (sem BTF) — compatível com o nosso parser ELF.
 struct bpf_map_def {
     unsigned int type;
     unsigned int key_size;
@@ -17,28 +21,58 @@ struct bpf_map_def {
     unsigned int map_flags;
 };
 
-// Declaração do mapa na seção "maps" (sem o ponto). 
-// Um array de 1 posição para somarmos as métricas de forma atômica.
-struct bpf_map_def SEC("maps") memory_metrics = {
-    .type = BPF_MAP_TYPE_ARRAY,
-    .key_size = sizeof(__u32),
-    .value_size = sizeof(__u64),
-    .max_entries = 1,
+// Um array de NUM_VARS posições. Cada posição é um contador atômico uint64.
+// O layout é: [cpu_run_queue, mem_brk_calls, mem_page_faults, io_block_ops]
+struct bpf_map_def SEC("maps") hosa_metrics = {
+    .type        = BPF_MAP_TYPE_ARRAY,
+    .key_size    = sizeof(__u32),
+    .value_size  = sizeof(__u64),
+    .max_entries = NUM_VARS,
 };
 
-// O Programa eBPF que monitora a Syscall 'sys_brk' (alocação de memória do heap)
-SEC("tracepoint/syscalls/sys_enter_brk")
-int trace_sys_brk(void *ctx) { // void *ctx elimina o warning de struct não declarada
-    __u32 key = 0; // Posição fixa no nosso array
-    __u64 *val;
-    
-    // Procura a chave no mapa eBPF
-    val = bpf_map_lookup_elem(&memory_metrics, &key);
-    if (val) {
-        // Usa uma operação atômica pra somar. Como o kernel inteiro pode estar alocando memória
-        // ao mesmo tempo, a soma atômica evita race conditions.
-        __sync_fetch_and_add(val, 1); 
-    }
+// --- Probe 1: CPU run queue depth ---
+// Dispara a cada wakeup de processo — proxy direto de pressão de scheduler.
+// Quanto mais processos esperando CPU, maior o run_queue.
+SEC("tracepoint/sched/sched_wakeup")
+int probe_sched_wakeup(void *ctx) {
+    __u32 key = IDX_CPU_RUN_QUEUE;
+    __u64 *val = bpf_map_lookup_elem(&hosa_metrics, &key);
+    if (val)
+        __sync_fetch_and_add(val, 1);
+    return 0;
+}
 
-    return 0; // Retorna 0 pro kernel seguir a vida dele
+// --- Probe 2: Alocações de heap (sys_brk) ---
+// Mantido da fase anterior. Conta chamadas brk() — proxy de alocação de heap.
+SEC("tracepoint/syscalls/sys_enter_brk")
+int probe_sys_brk(void *ctx) {
+    __u32 key = IDX_MEM_BRK_CALLS;
+    __u64 *val = bpf_map_lookup_elem(&hosa_metrics, &key);
+    if (val)
+        __sync_fetch_and_add(val, 1);
+    return 0;
+}
+
+// --- Probe 3: Page faults ---
+// Dispara a cada page fault do kernel. Page faults altos indicam pressão real
+// de memória — swap ativo, working set maior que RAM disponível.
+SEC("tracepoint/exceptions/page_fault_kernel")
+int probe_page_fault(void *ctx) {
+    __u32 key = IDX_MEM_PAGE_FAULTS;
+    __u64 *val = bpf_map_lookup_elem(&hosa_metrics, &key);
+    if (val)
+        __sync_fetch_and_add(val, 1);
+    return 0;
+}
+
+// --- Probe 4: Operações de bloco emitidas ---
+// Dispara a cada request de I/O de bloco enviado ao device driver.
+// I/O alto junto com page_faults altos = swap ativo (assinatura de memory leak).
+SEC("tracepoint/block/block_rq_issue")
+int probe_block_rq(void *ctx) {
+    __u32 key = IDX_IO_BLOCK_OPS;
+    __u64 *val = bpf_map_lookup_elem(&hosa_metrics, &key);
+    if (val)
+        __sync_fetch_and_add(val, 1);
+    return 0;
 }

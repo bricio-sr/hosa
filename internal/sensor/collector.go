@@ -15,38 +15,50 @@ import (
 )
 
 const (
-	// bpfObjectPath é o caminho para o bytecode compilado pelo clang.
-	// Gerado via: clang -O2 -target bpf -c internal/bpf/sensors.c -o internal/bpf/sensors.o
-	bpfObjectPath = "internal/bpf/sensors.o"
+	bpfObjectPath   = "internal/bpf/sensors.o"
+	mapName         = "hosa_metrics"
+	verifierLogSize = 64 * 1024
 
-	// mapName é o nome do mapa eBPF definido em sensors.c.
-	mapName = "memory_metrics"
+	// NumVars é a dimensão do vetor de estado — deve ser sincronizado com sensors.c.
+	NumVars = 4
 
-	// tracepointSubsystem e tracepointEvent identificam o ponto de captura no kernel.
-	tracepointSubsystem = "syscalls"
-	tracepointEvent     = "sys_enter_brk"
-
-	// verifierLogSize é o tamanho do buffer para o log do verifier eBPF.
-	// Usado apenas em caso de erro no carregamento do programa.
-	verifierLogSize = 64 * 1024 // 64 KB
+	// Índices das variáveis no vetor — espelham os defines do sensors.c.
+	IdxCPURunQueue   = 0
+	IdxMemBrkCalls   = 1
+	IdxMemPageFaults = 2
+	IdxIOBlockOps    = 3
 )
 
-// Collector é o sensor eBPF do HOSA.
-// Ele carrega o programa sensors.o no kernel, o anexa ao tracepoint
-// sys_enter_brk e disponibiliza a leitura das métricas coletadas.
-type Collector struct {
-	mapFD   sysbpf.MapFD  // file descriptor do mapa eBPF (compartilhado kernel↔userspace)
-	progFD  sysbpf.ProgFD // file descriptor do programa eBPF carregado
-	eventFD int            // file descriptor do perf event (mantê-lo aberto = programa ativo)
+// probe descreve um programa eBPF e seu ponto de anexo no kernel.
+type probe struct {
+	subsystem string
+	event     string
 }
 
-// Start inicializa o sensor eBPF em 4 passos:
+// probes lista os 4 programas que o sensors.c expõe, na ordem dos índices acima.
+var probes = []probe{
+	{subsystem: "sched", event: "sched_wakeup"},
+	{subsystem: "syscalls", event: "sys_enter_brk"},
+	{subsystem: "exceptions", event: "page_fault_kernel"},
+	{subsystem: "block", event: "block_rq_issue"},
+}
+
+// Collector é o sensor eBPF do HOSA.
+// Carrega os 4 programas do sensors.o, compartilham um único mapa de NUM_VARS entradas.
+type Collector struct {
+	mapFD    sysbpf.MapFD   // mapa compartilhado entre todos os programas
+	progFDs  []sysbpf.ProgFD // um fd por programa carregado
+	eventFDs []int           // um fd por perf event anexado
+}
+
+// Start inicializa os 4 sensores eBPF:
 //  1. Parseia o ELF do sensors.o
-//  2. Cria o mapa no kernel (BPF_MAP_CREATE)
-//  3. Carrega o programa no kernel (BPF_PROG_LOAD)
-//  4. Anexa ao tracepoint sys_enter_brk (perf_event_open + ioctl)
+//  2. Cria o mapa hosa_metrics (4 entradas) no kernel
+//  3. Para cada seção de programa no ELF:
+//     a. Resolve relocações (injeta map_fd)
+//     b. BPF_PROG_LOAD
+//     c. perf_event_open + ioctl attach
 func (c *Collector) Start() error {
-	// Passo 1 — Parseia o ELF (falha cedo se sensors.o não existe)
 	objPath, err := resolveObjectPath(bpfObjectPath)
 	if err != nil {
 		return fmt.Errorf("sensor.Start: %w", err)
@@ -57,10 +69,10 @@ func (c *Collector) Start() error {
 		return fmt.Errorf("sensor.Start: falha ao parsear ELF %q: %w", objPath, err)
 	}
 
-	// Passo 2 — Cria o mapa no kernel
+	// Passo 2 — Cria o mapa compartilhado
 	mapDef, ok := obj.MapDefs[mapName]
 	if !ok {
-		return fmt.Errorf("sensor.Start: mapa %q não encontrado no ELF", mapName)
+		return fmt.Errorf("sensor.Start: mapa %q não encontrado no ELF (encontrados: %v)", mapName, obj.MapDefNames())
 	}
 
 	c.mapFD, err = sysbpf.CreateMap(mapDef.Type, mapDef.KeySize, mapDef.ValueSize, mapDef.MaxEntries)
@@ -68,78 +80,98 @@ func (c *Collector) Start() error {
 		return fmt.Errorf("sensor.Start: falha ao criar mapa eBPF: %w", err)
 	}
 
-	// Passo 3 — Resolve relocações: injeta o map_fd real nas instruções BPF_LD_IMM64.
-	// Sem este passo, o verifier rejeita com "R1 type=scalar expected=map_ptr".
-	if err = obj.RelocateInsns(sysbpf.MapFDs{mapName: c.mapFD}); err != nil {
-		_ = unix.Close(int(c.mapFD))
-		return fmt.Errorf("sensor.Start: falha ao resolver relocações: %w", err)
+	// Passos 3a-3c — Para cada programa no ELF
+	for i, p := range probes {
+		progInsns, ok := obj.InsnsBySection[fmt.Sprintf("tracepoint/%s/%s", p.subsystem, p.event)]
+		if !ok {
+			// Probe não encontrada no ELF — pula silenciosamente (kernel pode não ter o tracepoint)
+			log.Printf("HOSA Sensor: probe %s/%s não encontrada no ELF — pulando", p.subsystem, p.event)
+			continue
+		}
+
+		// 3a — Resolve relocações para esta seção
+		insnsCopy := make([]byte, len(progInsns))
+		copy(insnsCopy, progInsns)
+		objCopy := &sysbpf.BPFObjectSlice{Insns: insnsCopy, InsnMapRefs: obj.InsnMapRefsBySection[fmt.Sprintf("tracepoint/%s/%s", p.subsystem, p.event)]}
+		if err = objCopy.RelocateInsns(sysbpf.MapFDs{mapName: c.mapFD}); err != nil {
+			c.closeAll()
+			return fmt.Errorf("sensor.Start: probe %d (%s/%s) relocação falhou: %w", i, p.subsystem, p.event, err)
+		}
+
+		// 3b — BPF_PROG_LOAD
+		verifierLog := make([]byte, verifierLogSize)
+		progFD, err := sysbpf.LoadProg(sysbpf.BPF_PROG_TYPE_TRACEPOINT, objCopy.Insns, obj.License, verifierLog)
+		if err != nil {
+			c.closeAll()
+			return fmt.Errorf("sensor.Start: probe %s/%s falhou no verifier: %w", p.subsystem, p.event, err)
+		}
+		c.progFDs = append(c.progFDs, progFD)
+
+		// 3c — Attach
+		eventFD, err := sysbpf.AttachTracepoint(p.subsystem, p.event, progFD)
+		if err != nil {
+			c.closeAll()
+			return fmt.Errorf("sensor.Start: falha ao anexar probe %s/%s: %w", p.subsystem, p.event, err)
+		}
+		c.eventFDs = append(c.eventFDs, eventFD)
+
+		log.Printf("HOSA Sensor: probe ativa — %s/%s", p.subsystem, p.event)
 	}
 
-	// Passo 4 — Carrega o programa no kernel
-	// O buffer de log captura a saída do verifier em caso de rejeição.
-	verifierLog := make([]byte, verifierLogSize)
-
-	c.progFD, err = sysbpf.LoadProg(sysbpf.BPF_PROG_TYPE_TRACEPOINT, obj.Insns, obj.License, verifierLog)
-	if err != nil {
-		_ = unix.Close(int(c.mapFD))
-		return fmt.Errorf("sensor.Start: falha ao carregar programa eBPF: %w", err)
+	if len(c.eventFDs) == 0 {
+		c.closeAll()
+		return fmt.Errorf("sensor.Start: nenhuma probe foi anexada com sucesso")
 	}
 
-	// Passo 5 — Anexa ao tracepoint
-	c.eventFD, err = sysbpf.AttachTracepoint(tracepointSubsystem, tracepointEvent, c.progFD)
-	if err != nil {
-		_ = unix.Close(int(c.progFD))
-		_ = unix.Close(int(c.mapFD))
-		return fmt.Errorf("sensor.Start: falha ao anexar ao tracepoint %s/%s: %w",
-			tracepointSubsystem, tracepointEvent, err)
-	}
-
-	log.Printf("HOSA Sensor: capturando %s/%s via eBPF (mapFD=%d, progFD=%d)",
-		tracepointSubsystem, tracepointEvent, c.mapFD, c.progFD)
-
+	log.Printf("HOSA Sensor: %d/%d probes ativas (mapFD=%d)", len(c.eventFDs), len(probes), c.mapFD)
 	return nil
 }
 
-// ReadMetrics lê o contador acumulado de chamadas sys_brk do mapa eBPF.
-// O valor é incrementado atomicamente pelo programa em kernel space a cada brk().
-// Retorna 0 em caso de erro de leitura.
-func (c *Collector) ReadMetrics() float64 {
-	var key uint32 = 0
-	var value uint64
+// ReadMetrics lê o vetor de estado completo do mapa eBPF.
+// Retorna []float64 de tamanho NumVars com os contadores acumulados.
+// Índices: [cpu_run_queue, mem_brk_calls, mem_page_faults, io_block_ops]
+func (c *Collector) ReadMetrics() []float64 {
+	result := make([]float64, NumVars)
 
-	if err := sysbpf.LookupElem(c.mapFD, unsafe.Pointer(&key), unsafe.Pointer(&value)); err != nil {
-		log.Printf("HOSA Sensor: erro ao ler mapa eBPF: %v", err)
-		return 0
+	for i := 0; i < NumVars; i++ {
+		var key uint32 = uint32(i)
+		var value uint64
+
+		if err := sysbpf.LookupElem(c.mapFD, unsafe.Pointer(&key), unsafe.Pointer(&value)); err != nil {
+			log.Printf("HOSA Sensor: erro ao ler índice %d do mapa: %v", i, err)
+			continue
+		}
+		result[i] = float64(value)
 	}
 
-	return float64(value)
+	return result
 }
 
-// Close desanexa o programa eBPF e libera todos os file descriptors.
-// Fechar o eventFD é suficiente para desativar o programa no kernel —
-// o kernel remove o link quando nenhum fd referencia o perf event.
+// Close desanexa todos os programas eBPF e libera os file descriptors.
 func (c *Collector) Close() {
-	if c.eventFD > 0 {
-		if err := sysbpf.Close(c.eventFD); err != nil {
-			log.Printf("HOSA Sensor: erro ao fechar eventFD: %v", err)
-		}
-	}
-	if c.progFD > 0 {
-		if err := unix.Close(int(c.progFD)); err != nil {
-			log.Printf("HOSA Sensor: erro ao fechar progFD: %v", err)
-		}
-	}
-	if c.mapFD > 0 {
-		if err := unix.Close(int(c.mapFD)); err != nil {
-			log.Printf("HOSA Sensor: erro ao fechar mapFD: %v", err)
-		}
-	}
+	c.closeAll()
 }
 
-// resolveObjectPath encontra o sensors.o relativo à raiz do repositório.
+func (c *Collector) closeAll() {
+	for _, fd := range c.eventFDs {
+		if fd > 0 {
+			sysbpf.Close(fd)
+		}
+	}
+	for _, fd := range c.progFDs {
+		if int(fd) > 0 {
+			unix.Close(int(fd))
+		}
+	}
+	if int(c.mapFD) > 0 {
+		unix.Close(int(c.mapFD))
+	}
+	c.eventFDs = nil
+	c.progFDs = nil
+	c.mapFD = 0
+}
+
 func resolveObjectPath(relPath string) (string, error) {
-	// Em desenvolvimento (go run ./cmd/hosa), usa o arquivo fonte como âncora
-	// para subir até a raiz do repositório.
 	_, callerFile, _, ok := runtime.Caller(1)
 	if ok {
 		repoRoot := filepath.Join(filepath.Dir(callerFile), "..", "..")
@@ -148,12 +180,9 @@ func resolveObjectPath(relPath string) (string, error) {
 			return filepath.Abs(candidate)
 		}
 	}
-
-	// Fallback: relativo ao diretório de trabalho atual
 	if fileExists(relPath) {
 		return filepath.Abs(relPath)
 	}
-
 	return "", fmt.Errorf("sensors.o não encontrado em %q — execute 'make build-bpf' primeiro", relPath)
 }
 

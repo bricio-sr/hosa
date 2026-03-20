@@ -18,40 +18,43 @@ const (
 	LevelProtection
 )
 
-// Limiares de D_M para escalonamento de nível (whitepaper Seção 5.2).
+// Limiares de D_M para escalonamento de nível.
+// Com p=4 variáveis, o D_M esperado em homeostase segue χ²(4):
+// média ≈ 2.0, std ≈ 2.0. Limiares calibrados empiricamente para
+// separar ruído normal de estresse real com 4 probes.
 const (
-	ThresholdVigilance   = 2.5
-	ThresholdContainment = 4.5
-	ThresholdProtection  = 7.0
+	ThresholdVigilance   = 3.5
+	ThresholdContainment = 5.5
+	ThresholdProtection  = 8.0
 )
 
-// Limiares de dD_M/dt — taxa de variação do estresse por segundo.
-// Um valor alto aqui significa que o sistema está se deteriorando rapidamente,
-// mesmo que D_M ainda não tenha cruzado o limiar de magnitude.
+// Limiares de dD̄_M/dt — sobre o D_M já suavizado pelo EWMA.
 const (
-	// ThresholdDerivativeEscalate: se dD_M/dt > este valor, sobe um nível extra.
-	// Calibrado para detectar memory leaks agressivos (~50MB/s conforme whitepaper Fig. 1).
-	ThresholdDerivativeEscalate = 1.5
-
-	// ThresholdDerivativeRelax: derivada abaixo deste valor permite desescalada.
-	// Histerese: mais baixo que o de escalada para evitar oscilação.
-	ThresholdDerivativeRelax = 0.3
+	ThresholdDerivativeEscalate = 2.0
+	ThresholdDerivativeRelax    = 0.5
 )
 
 // hysteresisDown define quantos ciclos consecutivos abaixo do limiar são
 // necessários para desescalar um nível. Evita flapping em bordas de limiar.
-const hysteresisDown = 3
+const hysteresisDown = 5
 
 // PredictorConfig define os parâmetros do Córtex Preditivo.
 type PredictorConfig struct {
-	// MinSamples é o mínimo de amostras no RingBuffer antes de habilitar predições.
+	// MinSamples é o mínimo de amostras antes de habilitar predições.
 	MinSamples int
+
+	// Alpha é o fator de suavização do EWMA (0 < α ≤ 1).
+	// Alto = mais responsivo, baixo = mais estável.
+	// Whitepaper Seção 4.3: calibrado durante warm-up por recurso.
+	// Padrão conservador para ambientes com p=4 variáveis ruidosas.
+	Alpha float64
 }
 
 // DefaultConfig retorna a configuração padrão recomendada pelo whitepaper.
 func DefaultConfig() PredictorConfig {
 	return PredictorConfig{
 		MinSamples: 30,
+		Alpha:      0.2, // suavização forte — prioriza estabilidade sobre responsividade
 	}
 }
 
@@ -72,31 +75,39 @@ type StressReading struct {
 }
 
 // PredictiveCortex é o "cérebro" do HOSA.
-// Além de calcular D_M, rastreia sua derivada temporal dD_M/dt e aplica
-// histerese para evitar oscilação entre níveis.
+// Além de calcular D_M, aplica EWMA para suavização, rastreia dD̄_M/dt
+// e aplica histerese para evitar oscilação entre níveis.
 //
-// O basal (média e covariância) é mantido via WelfordState — atualização
-// incremental O(p²) por ciclo, com habituação automática a mudanças permanentes.
+// Pipeline de sinais:
+//   D_M(t) bruto → EWMA → D̄_M(t) suavizado → dD̄_M/dt → classify()
 type PredictiveCortex struct {
 	buffer  *state.RingBuffer
 	config  PredictorConfig
-	welford *WelfordState // estado incremental do basal
+	welford *WelfordState
+
+	// EWMA: D̄_M(t) = α·D_M(t) + (1-α)·D̄_M(t-1)
+	ewmaValue    float64 // valor suavizado atual
+	ewmaReady    bool    // false até a primeira amostra válida
 
 	// Estado interno entre ciclos
-	prev         *StressReading // última leitura válida
-	currentLevel AlertLevel     // nível atual (com histerese)
-	belowCount   int            // ciclos consecutivos abaixo do limiar atual
+	prev         *StressReading
+	currentLevel AlertLevel
+	belowCount   int
 }
 
 // NewPredictiveCortex inicializa o Córtex com um buffer e configuração.
-// O número de variáveis (vars) deve corresponder ao numVars do RingBuffer.
 func NewPredictiveCortex(buf *state.RingBuffer, cfg PredictorConfig) *PredictiveCortex {
-	// Extrai o número de variáveis do buffer via snapshot vazio
 	snap := buf.Snapshot()
 	vars := snap.Cols
 	if vars == 0 {
-		vars = 1 // fallback seguro para cold-start
+		vars = 1
 	}
+
+	alpha := cfg.Alpha
+	if alpha <= 0 || alpha > 1 {
+		alpha = DefaultConfig().Alpha
+	}
+	cfg.Alpha = alpha
 
 	return &PredictiveCortex{
 		buffer:       buf,
@@ -163,16 +174,27 @@ func (pc *PredictiveCortex) Analyze() (stress float64, dmDot float64, level Aler
 
 	now := time.Now()
 
-	// --- Calcula dD_M/dt ---
-	dmDot = pc.calcDerivative(dm, now)
+	// --- Aplica EWMA: D̄_M(t) = α·D_M(t) + (1-α)·D̄_M(t-1) ---
+	// Na primeira amostra válida, inicializa o EWMA com o valor bruto
+	// para evitar o transitório de arranque.
+	if !pc.ewmaReady {
+		pc.ewmaValue = dm
+		pc.ewmaReady = true
+	} else {
+		pc.ewmaValue = pc.config.Alpha*dm + (1-pc.config.Alpha)*pc.ewmaValue
+	}
+	smoothedDM := pc.ewmaValue
 
-	// --- Classifica com magnitude + derivada + histerese ---
-	level = pc.classify(dm, dmDot)
+	// --- Calcula dD̄_M/dt sobre o sinal suavizado ---
+	dmDot = pc.calcDerivative(smoothedDM, now)
 
-	// Persiste a leitura para o próximo ciclo
-	pc.prev = &StressReading{DM: dm, DMDot: dmDot, Level: level, Timestamp: now}
+	// --- Classifica com magnitude suavizada + derivada + histerese ---
+	level = pc.classify(smoothedDM, dmDot)
 
-	return dm, dmDot, level, nil
+	// Persiste usando o D_M suavizado como referência para o próximo ciclo
+	pc.prev = &StressReading{DM: smoothedDM, DMDot: dmDot, Level: level, Timestamp: now}
+
+	return smoothedDM, dmDot, level, nil
 }
 
 // calcDerivative calcula dD_M/dt usando diferença finita entre o ciclo atual e o anterior.

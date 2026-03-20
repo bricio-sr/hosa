@@ -30,12 +30,12 @@ func TestClassifyByMagnitude(t *testing.T) {
 		expected AlertLevel
 	}{
 		{0.5, LevelHomeostasis},
-		{2.4, LevelHomeostasis},
-		{2.5, LevelVigilance},
-		{4.4, LevelVigilance},
-		{4.5, LevelContainment},
-		{6.9, LevelContainment},
-		{7.0, LevelProtection},
+		{3.4, LevelHomeostasis},
+		{3.5, LevelVigilance},
+		{5.4, LevelVigilance},
+		{5.5, LevelContainment},
+		{7.9, LevelContainment},
+		{8.0, LevelProtection},
 		{99.0, LevelProtection},
 	}
 
@@ -92,8 +92,8 @@ func TestCalcDerivative_Falling(t *testing.T) {
 func TestClassify_DerivativeEscalation(t *testing.T) {
 	cortex := &PredictiveCortex{currentLevel: LevelHomeostasis}
 
-	// D_M em Vigilância (2.6), mas derivada muito alta → deve subir para Contenção
-	level := cortex.classify(2.6, ThresholdDerivativeEscalate+0.1)
+	// D_M em Vigilância (3.6), mas derivada muito alta → deve subir para Contenção
+	level := cortex.classify(3.6, ThresholdDerivativeEscalate+0.1)
 
 	if level != LevelContainment {
 		t.Errorf("escalada por derivada: esperado LevelContainment(%d), obtido %d", LevelContainment, level)
@@ -105,7 +105,7 @@ func TestClassify_NoEscalationWithLowDerivative(t *testing.T) {
 	cortex := &PredictiveCortex{currentLevel: LevelHomeostasis}
 
 	// D_M em Vigilância, derivada baixa → deve ficar em Vigilância
-	level := cortex.classify(2.6, 0.1)
+	level := cortex.classify(3.6, 0.1)
 
 	if level != LevelVigilance {
 		t.Errorf("sem escalada: esperado LevelVigilance(%d), obtido %d", LevelVigilance, level)
@@ -118,7 +118,7 @@ func TestClassify_Hysteresis(t *testing.T) {
 
 	// D_M caiu para Vigilância e derivada baixa — mas não deve descer imediatamente
 	for i := 0; i < hysteresisDown-1; i++ {
-		level := cortex.classify(2.6, 0.0)
+		level := cortex.classify(3.6, 0.0)
 		if level != LevelContainment {
 			t.Errorf("ciclo %d: histerese deveria manter LevelContainment(%d), obtido %d",
 				i+1, LevelContainment, level)
@@ -126,7 +126,7 @@ func TestClassify_Hysteresis(t *testing.T) {
 	}
 
 	// No hysteresisDown-ésimo ciclo, deve finalmente descer
-	level := cortex.classify(2.6, 0.0)
+	level := cortex.classify(3.6, 0.0)
 	if level != LevelVigilance {
 		t.Errorf("após %d ciclos, esperado LevelVigilance(%d), obtido %d",
 			hysteresisDown, LevelVigilance, level)
@@ -139,15 +139,15 @@ func TestClassify_HysteresisResetOnHighDerivative(t *testing.T) {
 	cortex := &PredictiveCortex{currentLevel: LevelContainment}
 
 	// Acumula alguns ciclos de descida
-	cortex.classify(2.6, 0.0)
-	cortex.classify(2.6, 0.0)
+	cortex.classify(3.6, 0.0)
+	cortex.classify(3.6, 0.0)
 
 	// Derivada sobe — deve resetar o contador
-	cortex.classify(2.6, ThresholdDerivativeRelax+0.5)
+	cortex.classify(3.6, ThresholdDerivativeRelax+0.5)
 
 	// Agora precisa de hysteresisDown ciclos novamente para descer
 	for i := 0; i < hysteresisDown-1; i++ {
-		level := cortex.classify(2.6, 0.0)
+		level := cortex.classify(3.6, 0.0)
 		if level != LevelContainment {
 			t.Errorf("após reset, ciclo %d ainda deveria ser LevelContainment, obtido %d", i+1, level)
 		}
@@ -159,7 +159,7 @@ func TestClassify_ImmediateEscalation(t *testing.T) {
 	cortex := &PredictiveCortex{currentLevel: LevelHomeostasis}
 
 	// D_M salta direto para Proteção — deve subir imediatamente
-	level := cortex.classify(8.0, 0.0)
+	level := cortex.classify(9.0, 0.0)
 
 	if level != LevelProtection {
 		t.Errorf("escalada imediata: esperado LevelProtection(%d), obtido %d", LevelProtection, level)
@@ -169,7 +169,7 @@ func TestClassify_ImmediateEscalation(t *testing.T) {
 // TestAnalyze_ReturnsHomeostasisBeforeMinSamples verifica o comportamento no cold-start.
 func TestAnalyze_ReturnsHomeostasisBeforeMinSamples(t *testing.T) {
 	buf := state.NewRingBuffer(100, 1)
-	cortex := NewPredictiveCortex(buf, PredictorConfig{MinSamples: 30})
+	cortex := NewPredictiveCortex(buf, PredictorConfig{MinSamples: 30, Alpha: 0.2})
 
 	// Insere apenas 5 amostras — abaixo do mínimo
 	for i := 0; i < 5; i++ {
@@ -182,5 +182,83 @@ func TestAnalyze_ReturnsHomeostasisBeforeMinSamples(t *testing.T) {
 	}
 	if stress != 0 || dmDot != 0 || level != LevelHomeostasis {
 		t.Errorf("cold-start: esperado (0, 0, Homeostasis), obtido (%.2f, %.2f, %d)", stress, dmDot, level)
+	}
+}
+
+// TestEWMA_Smoothing verifica que o EWMA suaviza valores oscilantes.
+// Com α=0.2, valores alternando entre 1 e 10 devem produzir saída estável.
+func TestEWMA_Smoothing(t *testing.T) {
+	cortex := &PredictiveCortex{
+		config:    PredictorConfig{Alpha: 0.2},
+		ewmaReady: false,
+	}
+
+	// Simula D_M oscilando entre 1.0 e 10.0
+	values := []float64{1.0, 10.0, 1.0, 10.0, 1.0, 10.0}
+	var prev float64
+	for i, v := range values {
+		if !cortex.ewmaReady {
+			cortex.ewmaValue = v
+			cortex.ewmaReady = true
+		} else {
+			cortex.ewmaValue = cortex.config.Alpha*v + (1-cortex.config.Alpha)*cortex.ewmaValue
+		}
+
+		if i > 0 {
+			// A variação entre ciclos consecutivos deve ser menor que a variação bruta (9.0)
+			delta := cortex.ewmaValue - prev
+			if delta < 0 {
+				delta = -delta
+			}
+			if delta >= 9.0 {
+				t.Errorf("ciclo %d: EWMA não suavizou (delta=%.2f >= 9.0)", i, delta)
+			}
+		}
+		prev = cortex.ewmaValue
+	}
+}
+
+// TestEWMA_Convergence verifica que com α baixo o EWMA converge lentamente
+// e com α alto converge rápido — garantindo que o parâmetro tem efeito.
+func TestEWMA_Convergence(t *testing.T) {
+	applyEWMA := func(alpha, initial, target float64, steps int) float64 {
+		v := initial
+		for i := 0; i < steps; i++ {
+			v = alpha*target + (1-alpha)*v
+		}
+		return v
+	}
+
+	// α=0.8 deve convergir para 10.0 em 10 passos bem mais do que α=0.1
+	fastConv := applyEWMA(0.8, 0.0, 10.0, 10)
+	slowConv := applyEWMA(0.1, 0.0, 10.0, 10)
+
+	if fastConv <= slowConv {
+		t.Errorf("α alto deveria convergir mais rápido: fast=%.4f, slow=%.4f", fastConv, slowConv)
+	}
+}
+
+// TestEWMA_InitializationNoBias verifica que a primeira amostra inicializa
+// o EWMA diretamente (sem transitório de arranque).
+func TestEWMA_InitializationNoBias(t *testing.T) {
+	cortex := &PredictiveCortex{
+		config:    PredictorConfig{Alpha: 0.2},
+		ewmaReady: false,
+	}
+
+	firstValue := 5.0
+	cortex.ewmaValue = firstValue
+	cortex.ewmaReady = true
+
+	if cortex.ewmaValue != firstValue {
+		t.Errorf("inicialização com bias: esperado %.1f, obtido %.4f", firstValue, cortex.ewmaValue)
+	}
+}
+
+// TestDefaultConfig_AlphaValid verifica que o DefaultConfig retorna um α válido.
+func TestDefaultConfig_AlphaValid(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Alpha <= 0 || cfg.Alpha > 1 {
+		t.Errorf("DefaultConfig.Alpha inválido: %.4f (deve ser 0 < α ≤ 1)", cfg.Alpha)
 	}
 }

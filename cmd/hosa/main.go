@@ -21,8 +21,8 @@ const (
 	ringBufferCapacity = 300
 
 	// numVars é a dimensão do vetor de métricas monitoradas.
-	// Por ora: [brk_count] (1 variável). Expandir conforme sensor evolui.
-	numVars = 1
+	// Deve ser igual a sensor.NumVars (4 variáveis: CPU, mem_brk, page_faults, block_io).
+	numVars = 4
 
 	// normalInterval é a frequência de coleta em homeostase.
 	normalInterval = 1 * time.Second
@@ -92,7 +92,7 @@ func main() {
 			tickCount++
 
 			// Passo 1 — SENTIR
-			reading := []float64{col.ReadMetrics()}
+			reading := col.ReadMetrics()
 
 			// Passo 2 — MEMORIZAR
 			if err := buf.Insert(reading); err != nil {

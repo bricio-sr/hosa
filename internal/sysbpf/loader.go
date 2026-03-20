@@ -1,15 +1,8 @@
-// loader.go implementa um parser ELF minimal para extrair o bytecode eBPF,
-// as definições de mapas e resolver as relocações BPF (R_BPF_64_64) do
-// arquivo .o gerado pelo clang -target bpf.
+// loader.go implementa um parser ELF minimal para extrair bytecode eBPF,
+// definições de mapas e resolver relocações BPF do .o gerado pelo clang.
 //
-// O passo crítico que o bpf2go faz e que precisamos fazer à mão:
-// após criar os mapas no kernel (BPF_MAP_CREATE), seus file descriptors
-// precisam ser injetados nas instruções BPF_LD_IMM64 antes de carregar
-// o programa. Sem isso, o verifier rejeita com "expected=map_ptr".
-//
-// Referências:
-//   - linux/bpf.h: BPF_LD_IMM64, BPF_PSEUDO_MAP_FD
-//   - ELF64 spec: seção de relocações SHT_REL (tipo 9)
+// Suporta múltiplas seções de programa (um .o com N tracepoints),
+// necessário para o sensors.c multivariável do HOSA.
 package sysbpf
 
 import (
@@ -20,19 +13,70 @@ import (
 
 // BPFObject representa um arquivo .o gerado pelo clang -target bpf, já parseado.
 type BPFObject struct {
-	// Insns é o bytecode bruto com relocações pendentes.
-	// Chame RelocateInsns(fds) antes de passar para LoadProg.
-	Insns []byte
-
-	// License é a string de licença extraída da seção "license".
+	// License extraída da seção "license".
 	License string
 
 	// MapDefs mapeia nome do mapa → parâmetros de criação.
 	MapDefs map[string]MapDef
 
-	// insnMapRefs mapeia índice de instrução → nome do mapa.
-	// Preenchido pelo parseador de relocações, consumido por RelocateInsns.
+	// InsnsBySection mapeia nome da seção → bytecode bruto (com relocações pendentes).
+	// Ex: "tracepoint/sched/sched_wakeup" → []byte{...}
+	InsnsBySection map[string][]byte
+
+	// InsnMapRefsBySection mapeia nome da seção → (índice de instrução → nome do mapa).
+	// Usado pelo collector para resolver relocações por seção individualmente.
+	InsnMapRefsBySection map[string]map[int]string
+
+	// Insns é o bytecode da primeira seção de programa encontrada.
+	// Mantido para compatibilidade com o loader single-program anterior.
+	Insns []byte
+
+	// insnMapRefs é o mapa de relocações da primeira seção (compatibilidade).
 	insnMapRefs map[int]string
+}
+
+// MapDefNames retorna os nomes dos mapas encontrados no ELF — útil para diagnóstico.
+func (obj *BPFObject) MapDefNames() []string {
+	names := make([]string, 0, len(obj.MapDefs))
+	for k := range obj.MapDefs {
+		names = append(names, k)
+	}
+	return names
+}
+
+// BPFObjectSlice é um wrapper leve para resolver relocações em uma fatia de bytecode
+// extraída de uma seção específica do BPFObject.
+type BPFObjectSlice struct {
+	Insns       []byte
+	InsnMapRefs map[int]string
+}
+
+// RelocateInsns resolve as relocações BPF nesta fatia, injetando map_fds.
+func (s *BPFObjectSlice) RelocateInsns(fds MapFDs) error {
+	for insnIdx, mapName := range s.InsnMapRefs {
+		fd, ok := fds[mapName]
+		if !ok {
+			return fmt.Errorf("RelocateInsns: fd não encontrado para mapa %q", mapName)
+		}
+		byteOffset := insnIdx * bpfInsnSize
+		if byteOffset+bpfInsnSize > len(s.Insns) {
+			return fmt.Errorf("RelocateInsns: offset %d fora dos limites", byteOffset)
+		}
+		dstReg := s.Insns[byteOffset+1] & 0x0f
+		s.Insns[byteOffset+1] = dstReg | (bpfPseudoMapFD << 4)
+		binary.LittleEndian.PutUint32(s.Insns[byteOffset+4:], uint32(fd))
+	}
+	return nil
+}
+
+// RelocateInsns resolve relocações no BPFObject inteiro (seção única — compatibilidade).
+func (obj *BPFObject) RelocateInsns(fds MapFDs) error {
+	s := &BPFObjectSlice{Insns: obj.Insns, InsnMapRefs: obj.insnMapRefs}
+	if err := s.RelocateInsns(fds); err != nil {
+		return err
+	}
+	obj.Insns = s.Insns
+	return nil
 }
 
 // MapDef contém os parâmetros necessários para criar um mapa via CreateMap.
@@ -44,45 +88,9 @@ type MapDef struct {
 }
 
 // MapFDs mapeia nome do mapa → file descriptor retornado por BPF_MAP_CREATE.
-// Passado para RelocateInsns após criar os mapas no kernel.
 type MapFDs map[string]MapFD
 
-// RelocateInsns resolve as relocações BPF injetando os map_fds reais nas
-// instruções BPF_LD_IMM64 que referenciam mapas.
-// Deve ser chamado após BPF_MAP_CREATE e antes de BPF_PROG_LOAD.
-func (obj *BPFObject) RelocateInsns(fds MapFDs) error {
-	for insnIdx, mapName := range obj.insnMapRefs {
-		fd, ok := fds[mapName]
-		if !ok {
-			return fmt.Errorf("RelocateInsns: fd não encontrado para mapa %q", mapName)
-		}
-
-		byteOffset := insnIdx * bpfInsnSize
-		if byteOffset+bpfInsnSize > len(obj.Insns) {
-			return fmt.Errorf("RelocateInsns: offset %d fora dos limites do bytecode", byteOffset)
-		}
-
-		// Instrução BPF_LD_IMM64 (slot 0 de 2), layout de 8 bytes:
-		// byte [0]   = opcode = 0x18
-		// byte [1]   = (dst_reg & 0xf) | (src_reg << 4)
-		//              src_reg DEVE ser BPF_PSEUDO_MAP_FD (1) para o verifier
-		//              reconhecer o imm como map_ptr
-		// bytes[2:4] = off (0)
-		// bytes[4:8] = imm_lo = map_fd
-
-		// Preserva dst_reg (nibble baixo) e força src_reg=1 (nibble alto)
-		dstReg := obj.Insns[byteOffset+1] & 0x0f
-		obj.Insns[byteOffset+1] = dstReg | (bpfPseudoMapFD << 4)
-
-		// Injeta o fd no campo imm do slot 0
-		binary.LittleEndian.PutUint32(obj.Insns[byteOffset+4:], uint32(fd))
-
-		// Slot 1 (bytes [8:16]): opcode=0, src_reg=0, imm_hi=0 — já zerado pelo clang
-	}
-	return nil
-}
-
-// Constantes ELF (subconjunto de elf.h)
+// Constantes ELF
 const (
 	elfMagic    = "\x7fELF"
 	elfClass64  = 2
@@ -93,10 +101,10 @@ const (
 	bpfInsnSize = 8
 )
 
-// Constantes BPF para identificar instruções de referência a mapas
+// Constantes BPF
 const (
-	bpfLdImmOpcode = 0x18 // BPF_LD | BPF_IMM | BPF_DW
-	bpfPseudoMapFD = 1    // src_reg quando imm é um map_fd
+	bpfLdImmOpcode = 0x18
+	bpfPseudoMapFD = 1
 )
 
 type sectionHeader struct {
@@ -135,7 +143,7 @@ func parseELF(data []byte) (*BPFObject, error) {
 		return nil, fmt.Errorf("parseELF: magic inválido")
 	}
 	if data[4] != elfClass64 {
-		return nil, fmt.Errorf("parseELF: apenas ELF64 suportado (class=%d)", data[4])
+		return nil, fmt.Errorf("parseELF: apenas ELF64 suportado")
 	}
 	if data[5] != elfDataLSB {
 		return nil, fmt.Errorf("parseELF: apenas little-endian suportado")
@@ -146,10 +154,6 @@ func parseELF(data []byte) (*BPFObject, error) {
 	shentsize := bo.Uint16(data[58:60])
 	shnum := bo.Uint16(data[60:62])
 	shstrndx := bo.Uint16(data[62:64])
-
-	if int(shoff) >= len(data) {
-		return nil, fmt.Errorf("parseELF: shoff=%d fora dos limites", shoff)
-	}
 
 	sections := make([]sectionHeader, shnum)
 	for i := 0; i < int(shnum); i++ {
@@ -180,25 +184,34 @@ func parseELF(data []byte) (*BPFObject, error) {
 	}
 
 	obj := &BPFObject{
-		MapDefs:     make(map[string]MapDef),
-		License:     "GPL",
-		insnMapRefs: make(map[int]string),
+		License:              "GPL",
+		MapDefs:              make(map[string]MapDef),
+		InsnsBySection:       make(map[string][]byte),
+		InsnMapRefsBySection: make(map[string]map[int]string),
+		insnMapRefs:          make(map[int]string),
 	}
 
-	var progSectionIdx int = -1
+	// Mapeia índice de seção → nome (para resolver relocações)
+	sectionNames := make(map[int]string, shnum)
 	var symtabIdx int = -1
 	var mapsSectionIdx int = -1
 
-	// Primeira passagem: coleta seções
+	// Primeira passagem: identifica e coleta todas as seções relevantes
 	for i, s := range sections {
 		name := getName(s.nameOff)
+		sectionNames[i] = name
 		raw := rawSection(data, s)
 
 		switch {
 		case s.shType == shtProgbits && isProgSection(name):
-			obj.Insns = make([]byte, len(raw))
-			copy(obj.Insns, raw)
-			progSectionIdx = i
+			insns := make([]byte, len(raw))
+			copy(insns, raw)
+			obj.InsnsBySection[name] = insns
+			obj.InsnMapRefsBySection[name] = make(map[int]string)
+			// Mantém a primeira seção em Insns para compatibilidade
+			if obj.Insns == nil {
+				obj.Insns = insns
+			}
 
 		case name == "license":
 			if len(raw) > 0 {
@@ -221,17 +234,21 @@ func parseELF(data []byte) (*BPFObject, error) {
 		}
 	}
 
-	if len(obj.Insns) == 0 {
+	if len(obj.InsnsBySection) == 0 {
 		return nil, fmt.Errorf("parseELF: nenhuma seção de programa eBPF encontrada")
 	}
 
-	// Segunda passagem: resolve relocações
-	if symtabIdx >= 0 && mapsSectionIdx >= 0 && progSectionIdx >= 0 {
+	// Segunda passagem: resolve relocações por seção de programa
+	if symtabIdx >= 0 && mapsSectionIdx >= 0 {
 		symtab := rawSection(data, sections[symtabIdx])
 		strtab := rawSection(data, sections[sections[symtabIdx].link])
 
 		for _, s := range sections {
-			if s.shType != shtRel || int(s.info) != progSectionIdx {
+			if s.shType != shtRel {
+				continue
+			}
+			targetName := sectionNames[int(s.info)]
+			if !isProgSection(targetName) {
 				continue
 			}
 			for _, rel := range parseRels(rawSection(data, s), bo) {
@@ -239,9 +256,13 @@ func parseELF(data []byte) (*BPFObject, error) {
 				if name == "" {
 					continue
 				}
-				// Mapeia o índice da instrução (em slots de 8 bytes) ao mapa
 				insnIdx := int(rel.offset) / bpfInsnSize
-				obj.insnMapRefs[insnIdx] = name
+				obj.InsnMapRefsBySection[targetName][insnIdx] = name
+				// Mantém compatibilidade com a primeira seção
+				if obj.InsnsBySection[targetName] != nil &&
+					sameBuf(obj.InsnsBySection[targetName], obj.Insns) {
+					obj.insnMapRefs[insnIdx] = name
+				}
 			}
 		}
 	}
@@ -249,7 +270,17 @@ func parseELF(data []byte) (*BPFObject, error) {
 	return obj, nil
 }
 
-// parseMapSectionLegacy lê mapas no formato legado (struct bpf_map_def de 20 bytes).
+// sameBuf verifica se dois slices apontam para o mesmo backing array.
+func sameBuf(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	if len(a) == 0 {
+		return true
+	}
+	return &a[0] == &b[0]
+}
+
 func parseMapSectionLegacy(sec []byte, bo binary.ByteOrder, obj *BPFObject) {
 	const entrySize = 20
 	if len(sec) < entrySize {
@@ -265,7 +296,7 @@ func parseMapSectionLegacy(sec []byte, bo binary.ByteOrder, obj *BPFObject) {
 		if def.Type == 0 && def.MaxEntries == 0 {
 			continue
 		}
-		name := "memory_metrics"
+		name := "hosa_metrics"
 		if i > 0 {
 			name = fmt.Sprintf("map_%d", i/entrySize)
 		}

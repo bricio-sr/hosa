@@ -66,6 +66,16 @@ func TestCollector_CloseZeroValue(t *testing.T) {
 	c.Close() // não deve panic
 }
 
+// TestCollector_ReadMetrics_ZeroValue verifica que ReadMetrics em Collector zerado
+// retorna um slice de NumVars zeros sem panic.
+func TestCollector_ReadMetrics_ZeroValue(t *testing.T) {
+	c := &Collector{}
+	result := c.ReadMetrics()
+	if len(result) != NumVars {
+		t.Errorf("ReadMetrics: esperado slice de %d elementos, obtido %d", NumVars, len(result))
+	}
+}
+
 // contains é um helper simples para não importar strings só para isso.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||

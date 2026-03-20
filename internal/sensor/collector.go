@@ -133,6 +133,11 @@ func (c *Collector) Start() error {
 func (c *Collector) ReadMetrics() []float64 {
 	result := make([]float64, NumVars)
 
+	// mapFD=0 indica Collector não inicializado — retorna zeros silenciosamente.
+	if int(c.mapFD) == 0 {
+		return result
+	}
+
 	for i := 0; i < NumVars; i++ {
 		var key uint32 = uint32(i)
 		var value uint64

@@ -130,44 +130,6 @@ Every action is **logged with its mathematical justification** — the exact D_M
 - clang/llvm (for eBPF C compilation)
 - Root privileges (eBPF requires `CAP_BPF`, cgroups require `CAP_SYS_ADMIN`)
 
-### Build
-
-```bash
-git clone https://github.com/bricio-sr/hosa.git
-cd hosa
-make build
-```
-
-### Run
-
-```bash
-# Start in dry-run mode (observe and log, no actuation)
-sudo ./hosa --mode=dry-run
-
-# Start with full actuation enabled
-sudo ./hosa
-
-# Start with custom warm-up period
-sudo ./hosa --warmup=300s
-```
-
-### Observe
-
-```bash
-# HOSA logs every decision with mathematical context
-tail -f /var/log/hosa/decisions.log
-
-# Example output during detection:
-# [2026-03-10T14:23:08Z] LEVEL=1 VIGILANCE D_M=2.8 dDM/dt=+1.6
-#   dominant_dim=mem_used(c_j=0.72) mem_pressure(c_j=0.21)
-#   action=increase_sampling 100ms→10ms
-#
-# [2026-03-10T14:23:09Z] LEVEL=2 CONTAINMENT D_M=4.7 dDM/dt=+2.1 d2DM/dt2=+0.5
-#   target_cgroup=/kubepods/pod-payment-service-7b4f
-#   action=memory.high 2G→1.6G
-#   reason=dominant_contributor mem_used(68%) mem_pressure(19%)
-```
-
 ---
 
 ## Architecture
@@ -257,12 +219,6 @@ hosa/
 ├── docs/
 │   ├── architecture.md        # Deep dive into the bio-inspired architecture
 │   └── math_model.md          # Full mathematical formulation
-├── docs-site/
-│   ├── css/
-│   │   └── style.css          # Main style file for docs site
-│   ├── pt_br/
-│   │   └── index.html         # Main file homepage (BR)
-│   └── index.html             # Main file homepage (EN)
 ├── go.mod
 ├── go.sum
 └── Makefile                   # make build compiles eBPF C + Go in one step
@@ -291,7 +247,7 @@ Let's be explicit:
 - [x] Welford incremental covariance matrix
 - [x] Mahalanobis Distance calculation
 - [ ] EWMA smoothing + temporal derivatives
-- [ ] Hardware proprioception (automatic topology discovery)
+- [x] Hardware proprioception (automatic topology discovery)
 - [ ] Graduated response system (Levels 0-4)
 - [ ] Thalamic Filter (telemetry suppression in homeostasis)
 - [ ] Benchmarks: detection latency, overhead, false positive rate

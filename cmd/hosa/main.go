@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -61,6 +62,10 @@ func main() {
 	// --- Camada 3: Córtex Preditivo (Cérebro) ---
 	cortex := brain.NewPredictiveCortex(buf, brain.DefaultConfig())
 
+	// --- Camada 3.5: Filtro Talâmico (Telemetria) ---
+	// Suprime telemetria detalhada em homeostase, emite heartbeat periódico.
+	thalamus := brain.NewThalamicFilter(brain.DefaultThalamicConfig(), nil)
+
 	// --- Camada 4: Motor (Sistema Motor) ---
 	// Garante que o cgroup /sys/fs/cgroup/hosa existe e inicializa o motor.
 	cgPath, err := syscgroup.EnsureHosaCgroup()
@@ -116,19 +121,32 @@ func main() {
 				continue
 			}
 
+			// Passo 3.5 — FILTRAR: o tálamo decide o que emitir para fora
+			thalamus.Observe(level, stress, dmDot)
+
 			// Passo 4 — REAGIR
-			interval = react(mot, stress, dmDot, level, memTotal, tickCount)
+			interval = react(mot, thalamus, stress, dmDot, level, memTotal, tickCount)
 		}
 	}
 }
 
-// react aciona o motor e retorna o intervalo de próxima amostragem.
-// tickCount é usado para suprimir logs repetitivos durante recuperação gradual.
-func react(mot *motor.CgroupMotor, stress, dmDot float64, level brain.AlertLevel, memTotal uint64, tick int) time.Duration {
+// react aciona o motor, notifica o tálamo sobre contenções e retorna o próximo intervalo.
+func react(mot *motor.CgroupMotor, thalamus *brain.ThalamicFilter, stress, dmDot float64, level brain.AlertLevel, memTotal uint64, tick int) time.Duration {
 	containLevel := motor.ContainmentLevel(level)
 
 	if err := mot.Apply(containLevel, memTotal); err != nil {
 		log.Printf("HOSA: erro ao aplicar contenção (nível=%d): %v", level, err)
+	}
+
+	// Notifica o tálamo sobre ações de contenção para auditoria
+	switch level {
+	case brain.LevelContainment:
+		thalamus.NotifyContainment(level, stress,
+			fmt.Sprintf("memory.high=%.0fMB", float64(memTotal)*0.75/(1<<20)))
+	case brain.LevelProtection:
+		thalamus.NotifyContainment(level, stress,
+			fmt.Sprintf("memory.high=%.0fMB memory.max=%.0fMB",
+				float64(memTotal)*0.50/(1<<20), float64(memTotal)*0.90/(1<<20)))
 	}
 
 	switch level {
@@ -136,20 +154,16 @@ func react(mot *motor.CgroupMotor, stress, dmDot float64, level brain.AlertLevel
 		return normalInterval
 
 	case brain.LevelVigilance:
-		// Em recuperação (derivada negativa), loga só a cada logEveryN ticks (~1s).
-		// Em escalada (derivada positiva), loga sempre — não perder eventos críticos.
 		if dmDot >= 0 || tick%logEveryN == 0 {
 			log.Printf("HOSA [VIGILÂNCIA]  D_M=%.4f dD_M/dt=%.4f — monitoramento intensificado", stress, dmDot)
 		}
 		return vigilanceInterval
 
 	case brain.LevelContainment:
-		// Contenção sempre loga — é uma ação real sobre o sistema.
 		log.Printf("HOSA [CONTENÇÃO]   D_M=%.4f dD_M/dt=%.4f — cgroups aplicados", stress, dmDot)
 		return vigilanceInterval
 
 	case brain.LevelProtection:
-		// Proteção sempre loga.
 		log.Printf("HOSA [PROTEÇÃO]    D_M=%.4f dD_M/dt=%.4f — contenção máxima aplicada", stress, dmDot)
 		return vigilanceInterval
 

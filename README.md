@@ -178,6 +178,16 @@ Every action is **logged with its mathematical justification** — the exact D_M
 > Measured on AMD EPYC 7763 · 2 vCPUs · 7.8 GB RAM · Linux (Codespaces)  
 > Run with `make bench` — source in `internal/bench/`
 
+### Production-Grade Overhead (5min Stress Test)
+
+| Metric | Average | Peak (Max) |
+| :--- | :--- | :--- |
+| **CPU Usage** | **0.02%** | **< 0.1%** |
+| **Memory (RSS)** | **7.9 MB** | **8.0 MB** |
+| **Context Switches** | Near Zero | Near Zero |
+
+*Tests performed on Linux Kernel 6.x using `pidstat` and custom monitoring scripts.*
+
 ### Decision Latency
 
 The core claim of HOSA is that it acts in the interval where external monitoring cannot. These numbers validate it.

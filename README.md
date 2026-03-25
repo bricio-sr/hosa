@@ -297,8 +297,8 @@ Let's be explicit:
 - [x] Welford incremental covariance matrix
 - [x] Mahalanobis Distance calculation
 - [x] Hardware proprioception (automatic topology discovery)
-- [ ] EWMA smoothing + temporal derivatives
-- [ ] Graduated response system (Levels 0–4)
+- [x] EWMA smoothing + temporal derivatives
+- [x] Graduated response system (Levels 0–3)
 - [ ] Thalamic Filter (telemetry suppression in homeostasis)
 - [ ] Benchmarks: detection latency, overhead, false positive rate
 

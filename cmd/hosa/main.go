@@ -39,6 +39,15 @@ const (
 func main() {
 	log.Println("HOSA: Homeostasis Operating System Agent — iniciando...")
 
+	// --- Camada 0: Propriocepção de Hardware (Warm-Up) ---
+	topo, err := sensor.DiscoverTopology()
+	if err != nil {
+		log.Printf("HOSA: aviso — propriocepção parcial: %v", err)
+		// Não é fatal — o sistema pode operar com topologia desconhecida
+	} else {
+		log.Printf("HOSA: topologia detectada: %s", topo)
+	}
+
 	// --- Camada 1: Memória de Curto Prazo (Sistema Límbico) ---
 	buf := state.NewRingBuffer(ringBufferCapacity, numVars)
 

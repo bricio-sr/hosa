@@ -1,8 +1,7 @@
-# Makefile
-.PHONY: generate test build
+.PHONY: generate test build bench bench-quick
 
 generate:
-	@echo ">> Compilando o Kernel C para o bytecode eBPF..."
+	@echo ">> Compiling eBPF kernel bytecode..."
 	go generate ./internal/bpf/...
 
 test:
@@ -10,3 +9,14 @@ test:
 
 build: generate
 	go build -o hosa_agent cmd/hosa/main.go
+
+bench:
+	go test -v -run=^$$ -bench=. -benchmem -benchtime=5s \
+		./internal/bench/... \
+		| tee bench_results.txt
+	@echo ""
+	@echo "Results saved to bench_results.txt"
+
+bench-quick:
+	go test -v -run=^$$ -bench=. -benchmem -benchtime=1s \
+		./internal/bench/...

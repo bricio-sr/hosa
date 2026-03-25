@@ -32,34 +32,38 @@ Your server crashes in **2 seconds**. Your monitoring detects it in **100**.
 
 That gap — the milliseconds between the start of a collapse and the arrival of the first useful metric at your control plane — is what we call the **Lethal Interval**. It's where systems die while the observer has no idea anything is wrong.
 
-```
- TIMELINE OF A COLLAPSE — MEMORY LEAK @ 50MB/s
+<table>
+<thead>
+<tr>
+  <th></th>
+  <th align="center">0s</th>
+  <th align="center">1s</th>
+  <th align="center">2s</th>
+  <th align="center" colspan="3">2s ⇢ 8s</th>
+  <th align="center">8s</th>
+  <th align="center">100s</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>✅ With HOSA</strong></td>
+  <td align="center">⚠️ Leak starts</td>
+  <td align="center">🔍 Detects</td>
+  <td align="center" colspan="4" style="background:#166534;color:#bbf7d0">🛡️ Contains · memory.high throttle</td>
+  <td align="center">✅ Stabilized</td>
+  <td align="center">📋 Operator notified<br/><em>with full context</em></td>
+</tr>
+<tr>
+  <td><strong>❌ Without HOSA</strong></td>
+  <td align="center" colspan="4" style="background:#7f1d1d;color:#fecaca">💀 Lethal Interval · undetected collapse</td>
+  <td align="center" colspan="2" style="background:#450a0a;color:#fca5a5">crash → 502<br/>CrashLoopBackOff</td>
+  <td align="center">💥 OOM-Kill</td>
+  <td align="center">🚨 Prometheus alert<br/><em>(too late)</em></td>
+</tr>
+</tbody>
+</table>
 
- t=0s         t=1s         t=2s              t=8s              t=40s         t=100s
-  │            │            │                  │                  │              │
-  │ Leak       │ HOSA       │ HOSA             │ HOSA             │ WITHOUT      │ Prometheus
-  │ starts     │ detects    │ contains         │ stabilizes       │ HOSA:        │ fires alert
-  │            │            │ (memory.high)    │ system           │ OOM-Kill     │ (too late)
-  │            │            │                  │                  │              │
-  ├────────────┴────────────┤                  │                  │              │
-  │    LETHAL INTERVAL      │                  │                  │              │
-  │    HOSA acted here      │                  │                  │              │
-  │    (2 seconds)          │                  │                  │              │
-  └─────────────────────────┘                  │                  │              │
-                                               │                  │              │
-               ┌───────────────────────────────┘                  │              │
-               │  System degraded but ALIVE                       │              │
-               │  Transactions preserved                          │              │
-               │  Operator notified with full context             │              │
-               └──────────────────────────────────────────────────┘              │
-                                                                                 │
-                              ┌──────────────────────────────────────────────────┘
-                              │  WITHOUT HOSA: crash → 502 → CrashLoopBackOff
-                              │  → late alert → angry customers → postmortem
-                              └──────────────────────────────────────────────────
-```
-
-**HOSA doesn't replace your monitoring. It keeps your node alive until your monitoring can do its job.**
+> **HOSA doesn't replace your monitoring. It keeps your node alive until your monitoring can do its job.**
 
 ---
 
@@ -67,11 +71,19 @@ That gap — the milliseconds between the start of a collapse and the arrival of
 
 Modern infrastructure monitoring (Prometheus, Datadog, Grafana) follows the same pattern:
 
-1. Agent **collects** metrics on the node
-2. **Transmits** them over the network to a central server
-3. Central server **stores** them in a TSDB
-4. **Evaluates** rules (`cpu > 90% for 1m`)
-5. **Fires** an alert
+```mermaid
+flowchart LR
+    A[Agent collects\nmetrics on node] --> B[Transmits over\nnetwork]
+    B --> C[Central server\nstores in TSDB]
+    C --> D["Evaluates rules\n(cpu > 90% for 1m)"]
+    D --> E[Fires alert]
+
+    style A fill:#334155,color:#e2e8f0
+    style B fill:#334155,color:#e2e8f0
+    style C fill:#334155,color:#e2e8f0
+    style D fill:#334155,color:#e2e8f0
+    style E fill:#7f1d1d,color:#fca5a5
+```
 
 Every step adds latency. The central server makes decisions based on a **statistically stale snapshot** of the remote node. When collapse is fast — OOM kills, memory leaks, DDoS floods, fork bombs — the mitigation arrives after the damage is done.
 
@@ -106,18 +118,58 @@ When HOSA detects anomaly acceleration, it acts through the same kernel mechanis
 
 ### Graduated Response
 
-HOSA doesn't go from "everything is fine" to "kill everything." It implements **six response levels** inspired by biological threat response:
+HOSA models operational state as a **bipolar spectrum centered on homeostasis** — not just overload protection. Deviations in *both directions* from baseline are classified and acted upon. Negative regimes represent under-demand; positive regimes represent over-demand or anomaly.
 
-| Level | Name | Action | Reversibility |
-|-------|------|--------|---------------|
-| **0** | Homeostasis | Nothing. Suppress redundant telemetry. | — |
-| **1** | Vigilance | Increase sampling rate. Log locally. No intervention. | Automatic |
-| **2** | Soft Containment | `renice` non-essential processes. Webhook notification. | Automatic |
-| **3** | Active Containment | CPU/memory throttling via cgroups. Partial load shedding via XDP. | Auto with hysteresis |
-| **4** | Severe Containment | Aggressive throttling. Block inbound traffic except healthchecks. | Requires sustained recovery |
-| **5** | Autonomous Quarantine | Network isolation. Freeze non-critical processes. Last-resort. | Manual intervention |
+<table width="100%">
+<tr>
+<td align="center" style="padding:4px 2px;font-size:12px;color:#6366f1"><b>−3</b></td>
+<td align="center" style="padding:4px 2px;font-size:12px;color:#818cf8"><b>−2</b></td>
+<td align="center" style="padding:4px 2px;font-size:12px;color:#a5b4fc"><b>−1</b></td>
+<td align="center" style="padding:4px 2px;font-size:12px;color:#c7d2fe"><b>&nbsp;&nbsp;0&nbsp;&nbsp;</b></td>
+<td align="center" style="padding:4px 2px;font-size:12px;color:#fde68a"><b>+1</b></td>
+<td align="center" style="padding:4px 2px;font-size:12px;color:#fbbf24"><b>+2</b></td>
+<td align="center" style="padding:4px 2px;font-size:12px;color:#f97316"><b>+3</b></td>
+<td align="center" style="padding:4px 2px;font-size:12px;color:#ef4444"><b>+4</b></td>
+<td align="center" style="padding:4px 2px;font-size:12px;color:#dc2626"><b>+5</b></td>
+</tr>
+<tr>
+<td align="center" style="padding:2px;font-size:10px;color:#818cf8">Anomalous<br/>Silence</td>
+<td align="center" style="padding:2px;font-size:10px;color:#818cf8">Structural<br/>Idle</td>
+<td align="center" style="padding:2px;font-size:10px;color:#a5b4fc">Legitimate<br/>Idle</td>
+<td align="center" style="padding:2px;font-size:10px;color:#c7d2fe">Homeo-<br/>stasis</td>
+<td align="center" style="padding:2px;font-size:10px;color:#fde68a">Plateau<br/>Shift</td>
+<td align="center" style="padding:2px;font-size:10px;color:#fbbf24">Season-<br/>ality</td>
+<td align="center" style="padding:2px;font-size:10px;color:#f97316">Adver-<br/>sarial</td>
+<td align="center" style="padding:2px;font-size:10px;color:#ef4444">Local<br/>Failure</td>
+<td align="center" style="padding:2px;font-size:10px;color:#dc2626">Viral<br/>Propag.</td>
+</tr>
+</table>
 
-Every action is **logged with its mathematical justification** — the exact D_M value, derivative, threshold crossed, and action taken. The agent is fully auditable.
+#### Negative Semi-Axis — Under-Demand
+
+| Regime | Name | Trigger | Action |
+|--------|------|---------|--------|
+| **−1** | Legitimate Idleness | Activity below baseline, coherent with time window (night, weekend) | GreenOps: CPU frequency reduction, sampling interval increase, telemetry suppression |
+| **−2** | Structural Idleness | Node **permanently** oversized — no window where resources are fully used | FinOps report: calculated EPI, right-sizing suggestion, projected savings |
+| **−3** | Anomalous Silence | Abrupt traffic drop **incoherent** with temporal context — possible DNS hijack, silent failure, attack | Vigilance → Active Containment depending on speed; active checks on processes, interfaces, upstream |
+
+> **−3 is a security scenario.** Traditional monitors report "all healthy" when a server stops receiving traffic (CPU low, memory free). HOSA detects that the silence itself is the anomaly.
+
+#### Regime 0 — Homeostasis
+
+Thalamic Filter active: only a minimal heartbeat is emitted. Baseline continuously refined via Welford.
+
+#### Positive Semi-Axis — Over-Demand & Anomaly
+
+| Regime | Name | Trigger | Action | Reversibility |
+|--------|------|---------|--------|---------------|
+| **+1** | Plateau Shift | D_M elevated but **stable derivative** — new legitimate workload | Habituation: recalibrate baseline to new regime | Automatic |
+| **+2** | Seasonality | Predictable cyclic peaks (daily, weekly, monthly) | Time-window baseline profiles (digital circadian rhythm) | Automatic |
+| **+3** | Adversarial | Individual metrics within range but **covariance structure deformed** — cryptomining, slow DDoS, low-and-slow exfil | Active Containment + covariance deformation monitoring. Habituation **blocked** | Auto with hysteresis |
+| **+4** | Localized Failure | Growing D_M with sustained positive derivative — memory leak, fork bomb, disk degradation | Graduated containment: `renice` → cgroup throttle → XDP load shedding → aggressive freeze | Auto with hysteresis |
+| **+5** | Viral Propagation | High PBI (Propagation Behavior Index) — worm, lateral movement, amplification DDoS | Network isolation. Habituation **categorically blocked** | **Manual** |
+
+Every action is **logged with its mathematical justification** — the exact D_M value, derivative, threshold crossed, and regime classification. The agent is fully auditable.
 
 ---
 
@@ -134,47 +186,45 @@ Every action is **logged with its mathematical justification** — the exact D_M
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    KERNEL SPACE (eBPF)                      │
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │   Sensory    │  │   Sensory    │  │    Actuators      │  │
-│  │   Probes     │  │   Probes     │  │  (XDP / cgroup    │  │
-│  │ (tracepoints │  │  (kprobes,   │  │   controllers)    │  │
-│  │  scheduler,  │  │  PSI hooks)  │  │                   │  │
-│  │  mm, net)    │  │              │  │                   │  │
-│  └──────┬───────┘  └──────┬───────┘  └────────▲──────────┘  │
-│         │                 │                   │             │
-│         ▼                 ▼                   │             │
-│  ┌──────────────────────────────┐             │             │
-│  │     eBPF Ring Buffer         │             │             │
-│  └──────────────┬───────────────┘             │             │
-├─────────────────┼─────────────────────────────┼─────────────┤
-│                 │      USER SPACE             │             │
-│                 ▼                             │             │
-│  ┌────────────────────────────────────────────┘─────────┐   │
-│  │          PREDICTIVE CORTEX (Go)                      │   │
-│  │                                                      │   │
-│  │  1. Receive events from ring buffer                  │   │
-│  │  2. Update state vector x(t)                         │   │
-│  │  3. Update μ and Σ incrementally (Welford)           │   │
-│  │  4. Calculate D_M(x(t))                              │   │
-│  │  5. Apply EWMA → D̄_M(t)                              │   │
-│  │  6. Calculate dD̄_M/dt and d²D̄_M/dt²                  │   │
-│  │  7. Evaluate against adaptive thresholds             │   │
-│  │  8. Determine response level (0-5)                   │   │
-│  │  9. Send actuation command via BPF maps              │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │       OPPORTUNISTIC COMMUNICATION (Go)               │   │
-│  │                                                      │   │
-│  │  - Webhooks to orchestrators (when available)        │   │
-│  │  - Local structured log (audit trail)                │   │
-│  │  - Metrics endpoint (Prometheus-compatible)          │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    subgraph KS["⚙️ Kernel Space (eBPF)"]
+        TP["Tracepoints\nscheduler · mm · net"]
+        KP["kprobes\nPSI hooks"]
+        RB[("eBPF\nRing Buffer")]
+        XDP["Actuators\nXDP · cgroups v2"]
+    end
+
+    subgraph US["🧠 User Space (Go)"]
+        subgraph PC["Predictive Cortex"]
+            SV["State Vector x(t)"]
+            WF["Welford\nμ · Σ update"]
+            MD["Mahalanobis\nDistance D_M"]
+            DV["Derivatives\n∂D_M/∂t · EWMA"]
+            TF["Time-to-Failure\nestimate"]
+            RL["Response Level\n0 – 5"]
+        end
+
+        subgraph OC["Opportunistic Communication"]
+            WH["Webhooks\norchestrators"]
+            LOG["Structured\nlog (audit)"]
+            MT["Metrics\nPrometheus"]
+        end
+    end
+
+    TP --> RB
+    KP --> RB
+    RB -->|"μs latency"| SV
+    SV --> WF --> MD --> DV --> TF --> RL
+    RL -->|"BPF map"| XDP
+    RL --> WH & LOG & MT
+
+    style KS fill:#1e293b,color:#94a3b8,stroke:#475569
+    style US fill:#0f172a,color:#cbd5e1,stroke:#334155
+    style PC fill:#172554,color:#bfdbfe,stroke:#3b82f6
+    style OC fill:#14532d,color:#bbf7d0,stroke:#22c55e
+    style XDP fill:#7f1d1d,color:#fca5a5,stroke:#ef4444
+    style RB  fill:#312e81,color:#c7d2fe,stroke:#6366f1
 ```
 
 ### Key Design Decisions
@@ -241,25 +291,25 @@ Let's be explicit:
 
 ## Roadmap
 
-### Phase 1: Foundation — The Reflex Arc `← we are here`
+### Phase 1 — The Reflex Arc `← we are here`
 
 - [x] eBPF probes for memory, CPU, I/O collection
 - [x] Welford incremental covariance matrix
 - [x] Mahalanobis Distance calculation
-- [ ] EWMA smoothing + temporal derivatives
 - [x] Hardware proprioception (automatic topology discovery)
-- [ ] Graduated response system (Levels 0-4)
+- [ ] EWMA smoothing + temporal derivatives
+- [ ] Graduated response system (Levels 0–4)
 - [ ] Thalamic Filter (telemetry suppression in homeostasis)
 - [ ] Benchmarks: detection latency, overhead, false positive rate
 
-### Phase 2: Ecosystem Symbiosis
+### Phase 2 — Ecosystem Symbiosis
 
 - [ ] Webhooks for K8s HPA/KEDA (preemptive scale-up)
 - [ ] Prometheus-compatible metrics endpoint
 - [ ] Enriched `/healthz` with state vector
 - [ ] Kubernetes DaemonSet deployment
 
-### Phase 3: Semantic Triage
+### Phase 3 — Semantic Triage
 
 - [ ] Local SLM for post-containment root cause analysis
 - [ ] Bloom Filter in eBPF for known-pattern fast-path blocking
@@ -305,7 +355,7 @@ Areas where help is especially welcome:
 
 ## License
 
-[GPL-3.0 license ](LICENSE) — Use it, extend it.
+[GPL-3.0 license](LICENSE) — Use it, extend it.
 
 ---
 

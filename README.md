@@ -224,8 +224,6 @@ The 18.2% FPR on synthetic data reflects that HOSA's thresholds are calibrated f
 
 ---
 
-## Quick Start
-
 ### Prerequisites
 
 - Linux kernel ≥ 5.8 (with eBPF CO-RE support)

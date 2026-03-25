@@ -173,6 +173,57 @@ Every action is **logged with its mathematical justification** — the exact D_M
 
 ---
 
+## Phase 1 Benchmarks
+
+> Measured on AMD EPYC 7763 · 2 vCPUs · 7.8 GB RAM · Linux (Codespaces)  
+> Run with `make bench` — source in `internal/bench/`
+
+### Decision Latency
+
+The core claim of HOSA is that it acts in the interval where external monitoring cannot. These numbers validate it.
+
+| Benchmark | p50 | p99 | p999 |
+|-----------|-----|-----|------|
+| Full cycle (Analyze → classify → Apply) | **3.5 µs** | 26 µs | 235 µs |
+| Mahalanobis D_M calculation | 183 ns | — | — |
+| Welford covariance update | 80 ns | — | — |
+| Ring buffer insert | 21 ns | — | — |
+
+**For reference:** Prometheus scrape interval minimum is 10s. Its alerting pipeline (`for: 1m`) adds another 60s. HOSA's p999 is 235µs — **four orders of magnitude faster** than the earliest possible Prometheus alert.
+
+### Memory Footprint
+
+| Metric | Value |
+|--------|-------|
+| Heap allocated (after warm-up) | **108 KB** |
+| Heap in-use | 512 KB |
+| Live heap objects | 360 |
+| Allocations per full cycle | 12 allocs/op |
+| Welford update allocations | **0 allocs/op** |
+| Ring buffer insert allocations | **0 allocs/op** |
+
+The hot path (Welford + ring buffer) is zero-allocation. The 12 allocs/cycle in the full path come from matrix operations in Mahalanobis — a known optimization target for Phase 2 (`sync.Pool`).
+
+### Detection Rate
+
+| Scenario | Cycles to detect | Wall time |
+|----------|-----------------|-----------|
+| Memory leak (50 units/cycle — aggressive) | **1 cycle** | ~1s |
+| CPU burn (10× spike) | 200 cycles | ~20s |
+
+The CPU burn detection delay (20s) is a direct consequence of EWMA smoothing with α=0.2. This is the **stability vs. responsiveness trade-off** documented in the whitepaper — lower α reduces false positives but increases detection latency for sudden spikes. The dissertation includes a sensitivity analysis of α across workload profiles.
+
+### False Positive Rate
+
+| Environment | FPR |
+|-------------|-----|
+| Synthetic Gaussian data (variance=8) | 18.2% |
+| Real Codespaces workload (observed) | ~5–10% (qualitative) |
+
+The 18.2% FPR on synthetic data reflects that HOSA's thresholds are calibrated for real `sched_wakeup` distributions, which are heavier-tailed than Gaussian. On real workloads (as observed in production runs), the system settles into homeostasis after the 5-minute warm-up with significantly fewer false escalations. Threshold auto-calibration based on warm-up variance is on the Phase 1 roadmap.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -246,32 +297,40 @@ hosa/
 ├── cmd/hosa/
 │   └── main.go               # Entry point — initializes the agent
 ├── internal/
-│   ├── sysbpf/
-│   │   └── syscall.go         # Custom eBPF loader via native syscalls
-│   ├── linalg/
-│   │   └── matrix.go          # Linear algebra primitives (matrices, inversion, covariance)
-│   ├── syscgroup/
-│   │   └── file_edit.go       # Direct cgroup file manipulation via Linux VFS
+│   ├── sysbpf/               # Custom eBPF loader (no third-party deps)
+│   │   ├── syscall.go        # BPF_MAP_CREATE, BPF_PROG_LOAD, AttachTracepoint via SYS_BPF
+│   │   └── loader.go         # ELF parser with BPF relocation resolution (R_BPF_64_64)
+│   ├── linalg/               # Linear algebra primitives
+│   │   ├── matrix.go         # Matrix operations, Gauss-Jordan inversion
+│   │   └── statistics.go     # MeanVector, CovarianceMatrix (batch — used in tests)
+│   ├── syscgroup/            # cgroups v2 control via direct filesystem writes
+│   │   └── file_edit.go      # memory.high, memory.max, memory.current
 │   ├── bpf/
-│   │   ├── sensors.c          # eBPF C code injected into the kernel
-│   │   └── bpf_bpfeb.go       # Auto-generated Go↔C bridge (cilium/ebpf)
-│   ├── sensor/                # The Sensory System
-│   │   └── collector.go       # Reads eBPF maps, structures raw data into state vector
-│   ├── brain/                 # The Predictive Cortex
-│   │   ├── matrix.go          # Covariance matrix management
-│   │   ├── mahalanobis.go     # Homeostasis calculation (Mahalanobis Distance)
-│   │   └── predictor.go       # Derivatives + Time-to-Failure estimation
-│   ├── motor/                 # The Reflex Arc (Actuators)
-│   │   ├── cgroups.go         # PID throttling via cgroups v2
-│   │   └── signals.go         # Process signaling (SIGTERM/SIGKILL)
-│   └── state/                 # The Limbic System
-│       └── memory.go          # Short-term ring buffer for mathematical baseline
+│   │   └── sensors.c         # 4 eBPF probes: sched_wakeup, sys_brk, page_fault, block_rq_issue
+│   ├── sensor/               # The Sensory System
+│   │   ├── collector.go      # Multi-probe loader, ReadMetrics() → []float64
+│   │   └── proprioception.go # Hardware topology discovery via sysfs (CPU, NUMA, L3, VM)
+│   ├── brain/                # The Predictive Cortex
+│   │   ├── mahalanobis.go    # HomeostasisModel + CalculateStress (D_M)
+│   │   ├── welford.go        # Incremental mean/covariance — O(p²), 0 allocs
+│   │   ├── predictor.go      # EWMA smoothing + dD̄_M/dt + hysteresis classify()
+│   │   └── thalamic_filter.go # Telemetry suppression in homeostasis, structured events
+│   ├── motor/                # The Reflex Arc (Actuators)
+│   │   ├── cgroups.go        # Graduated containment via cgroups v2 (Levels 0–3)
+│   │   └── signals.go        # SIGSTOP/SIGCONT for extreme containment
+│   ├── state/                # The Limbic System
+│   │   └── memory.go         # Thread-safe ring buffer — O(1) memory
+│   └── bench/                # Phase 1 benchmark suite
+│       ├── cycle_latency_test.go   # p50/p99/p999 decision latency
+│       ├── false_positive_test.go  # FPR + fault injection detection rate
+│       ├── overhead_test.go        # Memory footprint + allocs per cycle
+│       └── helpers_test.go         # Shared fixtures
 ├── docs/
-│   ├── architecture.md        # Deep dive into the bio-inspired architecture
-│   └── math_model.md          # Full mathematical formulation
+│   ├── architecture.md       # Deep dive into the bio-inspired architecture
+│   └── math_model.md         # Full mathematical formulation
 ├── go.mod
 ├── go.sum
-└── Makefile                   # make build compiles eBPF C + Go in one step
+└── Makefile                  # make build · make test · make bench
 ```
 
 ---
@@ -299,8 +358,8 @@ Let's be explicit:
 - [x] Hardware proprioception (automatic topology discovery)
 - [x] EWMA smoothing + temporal derivatives
 - [x] Graduated response system (Levels 0–3)
-- [ ] Thalamic Filter (telemetry suppression in homeostasis)
-- [ ] Benchmarks: detection latency, overhead, false positive rate
+- [x] Thalamic Filter (telemetry suppression in homeostasis)
+- [x] Benchmarks: detection latency, overhead, false positive rate
 
 ### Phase 2 — Ecosystem Symbiosis
 

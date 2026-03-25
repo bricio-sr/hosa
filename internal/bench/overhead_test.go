@@ -9,37 +9,48 @@ import (
 	"github.com/bricio-sr/hosa/internal/state"
 )
 
-// BenchmarkMemoryFootprint measures the steady-state heap after HOSA warm-up.
-// Reports heap_alloc_KB and heap_objects as custom metrics.
-func BenchmarkMemoryFootprint(b *testing.B) {
+// TestMemoryFootprint measures the heap delta caused by HOSA core structures.
+// Not a throughput benchmark — measures allocation once and reports via t.Logf.
+// Run with: go test -v -run TestMemoryFootprint ./internal/bench/
+func TestMemoryFootprint(t *testing.T) {
+	runtime.GC()
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+
 	buf := state.NewRingBuffer(benchSamples, benchVars)
 	rng := rand.New(rand.NewSource(42))
-
 	for i := 0; i < benchSamples*10; i++ {
 		buf.Insert(stableReading(rng, 5.0))
 	}
-
 	cortex := brain.NewPredictiveCortex(buf, brain.DefaultConfig())
 	cortex.Analyze()
 
 	runtime.GC()
 	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
 
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
-
-	heapAllocKB := float64(ms.HeapAlloc) / 1024.0
-	heapInuseKB := float64(ms.HeapInuse) / 1024.0
-
-	b.ReportMetric(heapAllocKB, "heap_alloc_KB")
-	b.ReportMetric(heapInuseKB, "heap_inuse_KB")
-	b.ReportMetric(float64(ms.HeapObjects), "heap_objects")
-
-	// Keep b.N loop to satisfy the benchmark framework
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		runtime.KeepAlive(cortex)
+	var deltaBytes uint64
+	if after.HeapAlloc > before.HeapAlloc {
+		deltaBytes = after.HeapAlloc - before.HeapAlloc
 	}
+
+	t.Logf("HOSA memory footprint after warm-up:")
+	t.Logf("  delta_heap    = %d KB", deltaBytes/1024)
+	t.Logf("  total_heap    = %d KB", after.HeapAlloc/1024)
+	t.Logf("  heap_inuse    = %d KB", after.HeapInuse/1024)
+	t.Logf("  heap_objects  = %d", after.HeapObjects)
+
+	// O(1) claim: total footprint must be under 2MB regardless of sample count
+	const maxBytes = 2 * 1024 * 1024
+	if after.HeapAlloc > maxBytes {
+		t.Errorf("heap_alloc %d KB exceeds 2MB budget — O(1) claim violated",
+			after.HeapAlloc/1024)
+	}
+
+	runtime.KeepAlive(cortex)
+	runtime.KeepAlive(buf)
 }
 
 // BenchmarkAllocationsPerCycle counts heap allocations per Analyze() call.

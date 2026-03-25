@@ -52,32 +52,38 @@ func BenchmarkFalsePositiveRate(b *testing.B) {
 }
 
 // BenchmarkDetectionRate_MemoryLeak simulates a gradual memory leak
-// (brk_calls growing monotonically) and measures how quickly the cortex
-// escalates to Vigilance or above.
+// and measures how quickly the cortex escalates to Vigilance or above.
 //
-// NOTE: A slow leak (rate=2.0) is absorbed by Welford habituation — expected
-// and a valid dissertation finding. Rate=50.0 simulates ~50MB/s leak (whitepaper Fig.1).
+// Design: basal learned on STABLE data only. Leak injected AFTER calibration
+// to prevent Welford from absorbing the leak into the baseline.
 func BenchmarkDetectionRate_MemoryLeak(b *testing.B) {
-	const cycles = 5_000
-	const leakRatePerCycle = 50.0 // ~50MB/s aggressive leak per whitepaper Fig.1
+	const stablePhase    = benchSamples * 2 // 600 stable cycles to build clean baseline
+	const leakPhase      = 2_000
+	const leakRatePerCycle = 50.0 // units/cycle — aggressive leak per whitepaper Fig.1
 
 	buf := state.NewRingBuffer(benchSamples, benchVars)
 	rng := rand.New(rand.NewSource(42))
 
-	// Warm-up with stable baseline
-	for i := 0; i < benchSamples; i++ {
+	// Phase 1: build clean, stable baseline
+	for i := 0; i < stablePhase; i++ {
 		buf.Insert(stableReading(rng, 5.0))
 	}
 
 	cortex := brain.NewPredictiveCortex(buf, brain.DefaultConfig())
 
+	// Drain cold-start with stable data (MinSamples cycles)
+	for i := 0; i < benchSamples; i++ {
+		buf.Insert(stableReading(rng, 5.0))
+		cortex.Analyze()
+	}
+
+	// Phase 2: inject leak
 	var detectionCycle int = -1
 	baselineBrk := 100.0
 
 	b.ResetTimer()
 
-	for i := 0; i < cycles; i++ {
-		// Simulate memory leak: brk_calls grows, other vars stable
+	for i := 0; i < leakPhase; i++ {
 		r := stableReading(rng, 5.0)
 		r[idxMemBrkCalls] = baselineBrk + float64(i)*leakRatePerCycle
 		buf.Insert(r)
@@ -89,7 +95,7 @@ func BenchmarkDetectionRate_MemoryLeak(b *testing.B) {
 	}
 
 	if detectionCycle == -1 {
-		detectionCycle = cycles // not detected
+		detectionCycle = leakPhase // not detected within window
 	}
 
 	b.ReportMetric(float64(detectionCycle), "cycles_to_detect")

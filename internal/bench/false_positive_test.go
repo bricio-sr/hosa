@@ -55,10 +55,11 @@ func BenchmarkFalsePositiveRate(b *testing.B) {
 // (brk_calls growing monotonically) and measures how quickly the cortex
 // escalates to Vigilance or above.
 //
-// Reports: cycles_to_detect (lower is better) and detection rate.
+// NOTE: A slow leak (rate=2.0) is absorbed by Welford habituation — expected
+// and a valid dissertation finding. Rate=50.0 simulates ~50MB/s leak (whitepaper Fig.1).
 func BenchmarkDetectionRate_MemoryLeak(b *testing.B) {
 	const cycles = 5_000
-	const leakRatePerCycle = 2.0 // brk_calls growth per cycle — simulates leak
+	const leakRatePerCycle = 50.0 // ~50MB/s aggressive leak per whitepaper Fig.1
 
 	buf := state.NewRingBuffer(benchSamples, benchVars)
 	rng := rand.New(rand.NewSource(42))
@@ -93,6 +94,7 @@ func BenchmarkDetectionRate_MemoryLeak(b *testing.B) {
 
 	b.ReportMetric(float64(detectionCycle), "cycles_to_detect")
 	b.ReportMetric(float64(detectionCycle)*float64(normalInterval.Milliseconds()), "ms_to_detect")
+	b.ReportMetric(leakRatePerCycle, "leak_rate_per_cycle")
 }
 
 // BenchmarkDetectionRate_CPUBurn simulates a sudden CPU spike

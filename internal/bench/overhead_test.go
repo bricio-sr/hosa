@@ -9,13 +9,9 @@ import (
 	"github.com/bricio-sr/hosa/internal/state"
 )
 
-// BenchmarkMemoryFootprint measures the steady-state heap used by core
-// HOSA structures after a full warm-up cycle.
-//
-// Uses HeapInuse after GC (stable measure) rather than delta (unreliable
-// when GC runs between ReadMemStats calls).
+// BenchmarkMemoryFootprint measures the steady-state heap after HOSA warm-up.
+// Reports heap_alloc_KB and heap_objects as custom metrics.
 func BenchmarkMemoryFootprint(b *testing.B) {
-	// Allocate and warm up the core structures
 	buf := state.NewRingBuffer(benchSamples, benchVars)
 	rng := rand.New(rand.NewSource(42))
 
@@ -24,25 +20,25 @@ func BenchmarkMemoryFootprint(b *testing.B) {
 	}
 
 	cortex := brain.NewPredictiveCortex(buf, brain.DefaultConfig())
-	cortex.Analyze() // ensure all internal state is allocated
+	cortex.Analyze()
 
-	// Force GC and measure stable heap
 	runtime.GC()
-	runtime.GC() // twice to collect any finalizers
+	runtime.GC()
 
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 
-	heapInuseKB := float64(ms.HeapInuse) / 1024.0
 	heapAllocKB := float64(ms.HeapAlloc) / 1024.0
+	heapInuseKB := float64(ms.HeapInuse) / 1024.0
 
 	b.ReportMetric(heapAllocKB, "heap_alloc_KB")
 	b.ReportMetric(heapInuseKB, "heap_inuse_KB")
 	b.ReportMetric(float64(ms.HeapObjects), "heap_objects")
 
+	// Keep b.N loop to satisfy the benchmark framework
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// no-op — this benchmark measures allocation, not throughput
+		runtime.KeepAlive(cortex)
 	}
 }
 

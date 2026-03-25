@@ -36,11 +36,10 @@ func TestApply_Homeostasis_RemovesLimits(t *testing.T) {
 	m, cleanup := newTestMotor(t)
 	defer cleanup()
 
-	// Pré-escreve um limite para garantir que release() o limpa
 	os.WriteFile(filepath.Join(m.cgPath, "memory.high"), []byte("1000000"), 0644)
 	os.WriteFile(filepath.Join(m.cgPath, "memory.max"), []byte("2000000"), 0644)
 
-	if err := m.Apply(LevelHomeostasis, totalMem); err != nil {
+	if _, err := m.Apply(LevelHomeostasis, totalMem); err != nil {
 		t.Fatalf("Apply(Homeostasis) falhou: %v", err)
 	}
 
@@ -56,11 +55,10 @@ func TestApply_Vigilance_RemovesLimits(t *testing.T) {
 	m, cleanup := newTestMotor(t)
 	defer cleanup()
 
-	if err := m.Apply(LevelVigilance, totalMem); err != nil {
+	if _, err := m.Apply(LevelVigilance, totalMem); err != nil {
 		t.Fatalf("Apply(Vigilance) falhou: %v", err)
 	}
 
-	// Vigilância não aplica contenção — deve remover limites igualmente
 	if got := readFile(t, m.cgPath, "memory.high"); got != "max" {
 		t.Errorf("memory.high: esperado 'max', obtido %q", got)
 	}
@@ -70,7 +68,7 @@ func TestApply_Containment_SetsMemoryHigh(t *testing.T) {
 	m, cleanup := newTestMotor(t)
 	defer cleanup()
 
-	if err := m.Apply(LevelContainment, totalMem); err != nil {
+	if _, err := m.Apply(LevelContainment, totalMem); err != nil {
 		t.Fatalf("Apply(Containment) falhou: %v", err)
 	}
 
@@ -86,7 +84,7 @@ func TestApply_Protection_SetsBothLimits(t *testing.T) {
 	m, cleanup := newTestMotor(t)
 	defer cleanup()
 
-	if err := m.Apply(LevelProtection, totalMem); err != nil {
+	if _, err := m.Apply(LevelProtection, totalMem); err != nil {
 		t.Fatalf("Apply(Protection) falhou: %v", err)
 	}
 
@@ -109,7 +107,7 @@ func TestApply_UnknownLevel_ReturnsError(t *testing.T) {
 	m, cleanup := newTestMotor(t)
 	defer cleanup()
 
-	if err := m.Apply(ContainmentLevel(99), totalMem); err == nil {
+	if _, err := m.Apply(ContainmentLevel(99), totalMem); err == nil {
 		t.Fatal("esperado erro para nível desconhecido, mas nenhum erro retornado")
 	}
 }
@@ -122,7 +120,6 @@ func TestApply_ContainmentIsStricterThanVigilance(t *testing.T) {
 	highStr := readFile(t, m.cgPath, "memory.high")
 	high, _ := strconv.ParseUint(highStr, 10, 64)
 
-	// memory.high em Contenção deve ser menor que o total
 	if high >= totalMem {
 		t.Errorf("Contenção deveria limitar memória, mas memory.high=%d >= totalMem=%d", high, totalMem)
 	}
@@ -136,6 +133,7 @@ func TestApply_ProtectionIsStricterThanContainment(t *testing.T) {
 	containHighStr := readFile(t, m.cgPath, "memory.high")
 	containHigh, _ := strconv.ParseUint(containHighStr, 10, 64)
 
+	m.lastLevel = -1 // reset para forçar re-aplicação
 	m.Apply(LevelProtection, totalMem)
 	protectHighStr := readFile(t, m.cgPath, "memory.high")
 	protectHigh, _ := strconv.ParseUint(protectHighStr, 10, 64)

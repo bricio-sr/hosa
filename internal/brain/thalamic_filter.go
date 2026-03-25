@@ -1,11 +1,16 @@
-// Package brain inclui o Filtro Talâmico do HOSA — a camada que decide
-// o que é emitido para sistemas externos em função do nível de alerta atual.
+// Package brain includes the Thalamic Filter — the single log authority of HOSA.
 //
-// Analogia biológica: o tálamo cerebral filtra e prioriza sinais sensoriais
-// antes de encaminhá-los ao córtex. Em homeostase, a maioria dos sinais é
-// suprimida. Em emergência, todos os canais são abertos.
+// All output goes through here. Nothing else logs directly to stdout/stderr.
+// In homeostasis: one heartbeat line every 30s, silence otherwise.
+// In anomaly: one structured line per significant event.
 //
-// Referência: whitepaper HOSA, Seção 6.3 — Regime 0, Filtro Talâmico.
+// Log format:
+//
+//	HOSA [TAG]  key=value key=value ...
+//
+// Tags: BOOT, SENSOR, HEARTBEAT, ANOMALY, ESCALATION, CONTAINMENT, RECOVERY, HOMEOSTASIS, PROTECTION
+//
+// Reference: HOSA whitepaper, Section 6.3 — Regime 0, Thalamic Filter.
 package brain
 
 import (
@@ -15,71 +20,41 @@ import (
 	"time"
 )
 
-// ThalamicConfig define o comportamento do Filtro Talâmico.
+// ThalamicConfig defines the filter behaviour.
 type ThalamicConfig struct {
-	// HeartbeatInterval é o período entre heartbeats em homeostase.
-	// Whitepaper: "heartbeat mínimo periódico confirmando que o nó está vivo".
+	// HeartbeatInterval is the period between heartbeats in homeostasis.
 	HeartbeatInterval time.Duration
-
-	// SuppressHomeostasisLogs controla se logs detalhados são suprimidos
-	// quando o sistema está em homeostase. true = suprime (comportamento padrão).
-	SuppressHomeostasisLogs bool
 }
 
-// DefaultThalamicConfig retorna a configuração padrão do filtro.
+// DefaultThalamicConfig returns the recommended default.
 func DefaultThalamicConfig() ThalamicConfig {
 	return ThalamicConfig{
-		HeartbeatInterval:       30 * time.Second,
-		SuppressHomeostasisLogs: true,
+		HeartbeatInterval: 30 * time.Second,
 	}
 }
 
-// TelemetryEvent representa um evento de telemetria emitido pelo HOSA.
-// Em homeostase, apenas eventos do tipo Heartbeat são emitidos.
-// Em anomalia, eventos DetailedStress são emitidos a cada ciclo.
+// TelemetryEvent is the structured event emitted by the filter.
 type TelemetryEvent struct {
-	// Timestamp do evento.
-	Timestamp time.Time
-
-	// Type é o tipo do evento.
-	Type TelemetryEventType
-
-	// Level é o nível de alerta atual.
-	Level AlertLevel
-
-	// StressDM é a Distância de Mahalanobis suavizada (D̄_M).
-	StressDM float64
-
-	// StressDMDot é a derivada temporal dD̄_M/dt.
+	Timestamp   time.Time
+	Type        TelemetryEventType
+	Level       AlertLevel
+	StressDM    float64
 	StressDMDot float64
-
-	// Message é uma descrição legível do evento.
-	Message string
+	Message     string
 }
 
-// TelemetryEventType classifica os eventos emitidos pelo filtro.
+// TelemetryEventType classifies emitted events.
 type TelemetryEventType int
 
 const (
-	// EventHeartbeat é emitido periodicamente em homeostase.
-	// Confirma que o nó está vivo e saudável — informação mínima suficiente.
-	EventHeartbeat TelemetryEventType = iota
-
-	// EventAnomalyDetected é emitido quando o nível sobe acima de Homeostase.
-	// Marca o início de um episódio de estresse.
+	EventHeartbeat         TelemetryEventType = iota
 	EventAnomalyDetected
-
-	// EventLevelChange é emitido em cada transição de nível (escalada ou descida).
 	EventLevelChange
-
-	// EventContainmentApplied é emitido quando o motor aplica uma ação de contenção.
 	EventContainmentApplied
-
-	// EventHomeostasisRestored é emitido quando o sistema retorna à homeostase.
 	EventHomeostasisRestored
+	EventProtectionApplied
 )
 
-// String retorna o nome legível do tipo de evento.
 func (t TelemetryEventType) String() string {
 	switch t {
 	case EventHeartbeat:
@@ -92,27 +67,25 @@ func (t TelemetryEventType) String() string {
 		return "containment_applied"
 	case EventHomeostasisRestored:
 		return "homeostasis_restored"
+	case EventProtectionApplied:
+		return "protection_applied"
 	default:
 		return "unknown"
 	}
 }
 
-// ThalamicFilter é o guardião da telemetria do HOSA.
-// Ele decide o que emitir para sistemas externos com base no nível de alerta.
+// ThalamicFilter is the single log authority of HOSA.
 type ThalamicFilter struct {
-	config       ThalamicConfig
-	mu           sync.Mutex
-	currentLevel AlertLevel
-	prevLevel    AlertLevel
+	config        ThalamicConfig
+	mu            sync.Mutex
+	currentLevel  AlertLevel
+	prevLevel     AlertLevel
 	lastHeartbeat time.Time
-
-	// handler é chamado para cada evento que passa pelo filtro.
-	// Permite integrar com qualquer sistema de saída (log, webhook, etc).
-	handler func(TelemetryEvent)
+	handler       func(TelemetryEvent)
 }
 
-// NewThalamicFilter inicializa o filtro com a configuração e um handler de saída.
-// O handler padrão (nil) usa o logger padrão do Go.
+// NewThalamicFilter initializes the filter.
+// handler=nil uses the default structured log handler.
 func NewThalamicFilter(cfg ThalamicConfig, handler func(TelemetryEvent)) *ThalamicFilter {
 	if handler == nil {
 		handler = defaultLogHandler
@@ -126,8 +99,25 @@ func NewThalamicFilter(cfg ThalamicConfig, handler func(TelemetryEvent)) *Thalam
 	}
 }
 
-// Observe é o método principal do filtro. Chamado a cada ciclo do Córtex.
-// Decide o que emitir com base no nível atual e no estado anterior.
+// Boot emits the initial startup lines (topology, sensor, status).
+// Called once during initialization — replaces all ad-hoc log.Printf in main.
+func (tf *ThalamicFilter) Boot(fields string) {
+	tf.emit(TelemetryEvent{
+		Timestamp: time.Now(),
+		Type:      EventHeartbeat, // reuse type, tag overridden by Boot handler
+		Message:   "[BOOT]	   " + fields,
+	})
+}
+
+// Sensor emits the sensor initialization summary.
+func (tf *ThalamicFilter) Sensor(fields string) {
+	tf.emit(TelemetryEvent{
+		Timestamp: time.Now(),
+		Message:   "SENSOR " + fields,
+	})
+}
+
+// Observe is called every cortex cycle. Decides what to emit.
 func (tf *ThalamicFilter) Observe(level AlertLevel, dm, dmDot float64) {
 	tf.mu.Lock()
 	defer tf.mu.Unlock()
@@ -138,95 +128,95 @@ func (tf *ThalamicFilter) Observe(level AlertLevel, dm, dmDot float64) {
 
 	switch {
 	case level == LevelHomeostasis && tf.prevLevel == LevelHomeostasis:
-		// Homeostase estável — emite apenas heartbeat periódico.
 		if now.Sub(tf.lastHeartbeat) >= tf.config.HeartbeatInterval {
 			tf.emit(TelemetryEvent{
 				Timestamp: now,
 				Type:      EventHeartbeat,
 				Level:     level,
 				StressDM:  dm,
-				Message:   fmt.Sprintf("nó saudável — D̄_M=%.4f", dm),
+				Message:   fmt.Sprintf("[HEARTBEAT]   level=0 dm=%.4f", dm),
 			})
 			tf.lastHeartbeat = now
 		}
 
 	case level > LevelHomeostasis && tf.prevLevel == LevelHomeostasis:
-		// Transição homeostase → anomalia: abre o canal completo.
 		tf.emit(TelemetryEvent{
 			Timestamp:   now,
 			Type:        EventAnomalyDetected,
 			Level:       level,
 			StressDM:    dm,
 			StressDMDot: dmDot,
-			Message: fmt.Sprintf("anomalia detectada — nível=%d D̄_M=%.4f dD̄_M/dt=%.4f",
+			Message: fmt.Sprintf("[ANOMALY]     level=%d dm=%.4f dm_dot=%+.4f",
 				level, dm, dmDot),
 		})
 
-	case level != tf.prevLevel && level > LevelHomeostasis:
-		// Mudança de nível durante episódio de estresse.
+	case level > tf.prevLevel:
 		tf.emit(TelemetryEvent{
 			Timestamp:   now,
 			Type:        EventLevelChange,
 			Level:       level,
 			StressDM:    dm,
 			StressDMDot: dmDot,
-			Message: fmt.Sprintf("mudança de nível %d→%d — D̄_M=%.4f dD̄_M/dt=%.4f",
+			Message: fmt.Sprintf("[ESCALATION]  level=%d→%d dm=%.4f dm_dot=%+.4f",
+				tf.prevLevel, level, dm, dmDot),
+		})
+
+	case level < tf.prevLevel && level > LevelHomeostasis:
+		tf.emit(TelemetryEvent{
+			Timestamp:   now,
+			Type:        EventLevelChange,
+			Level:       level,
+			StressDM:    dm,
+			StressDMDot: dmDot,
+			Message: fmt.Sprintf("[RECOVERY]    level=%d→%d dm=%.4f dm_dot=%+.4f",
 				tf.prevLevel, level, dm, dmDot),
 		})
 
 	case level == LevelHomeostasis && tf.prevLevel > LevelHomeostasis:
-		// Retorno à homeostase: emite evento de recuperação e reinicia heartbeat.
 		tf.emit(TelemetryEvent{
 			Timestamp: now,
 			Type:      EventHomeostasisRestored,
 			Level:     level,
 			StressDM:  dm,
-			Message:   fmt.Sprintf("homeostase restaurada — D̄_M=%.4f", dm),
+			Message:   fmt.Sprintf("[HOMEOSTASIS] dm=%.4f", dm),
 		})
 		tf.lastHeartbeat = now
 	}
 }
 
-// NotifyContainment é chamado pelo motor quando uma ação de contenção é aplicada.
-// Sempre emite — contenção é uma ação auditável independente do nível.
+// NotifyContainment is called by the motor when a containment action is applied.
 func (tf *ThalamicFilter) NotifyContainment(level AlertLevel, dm float64, action string) {
 	tf.mu.Lock()
 	defer tf.mu.Unlock()
 
+	tag := "[CONTAINMENT]"
+	evtType := EventContainmentApplied
+	if level == LevelProtection {
+		tag = "[PROTECTION] "
+		evtType = EventProtectionApplied
+	}
+
 	tf.emit(TelemetryEvent{
 		Timestamp: time.Now(),
-		Type:      EventContainmentApplied,
+		Type:      evtType,
 		Level:     level,
 		StressDM:  dm,
-		Message:   fmt.Sprintf("contenção aplicada — nível=%d D̄_M=%.4f ação=%s", level, dm, action),
+		Message:   fmt.Sprintf("%s level=%d dm=%.4f action=%s", tag, level, dm, action),
 	})
 }
 
-// CurrentLevel retorna o último nível observado pelo filtro.
+// CurrentLevel returns the last observed level.
 func (tf *ThalamicFilter) CurrentLevel() AlertLevel {
 	tf.mu.Lock()
 	defer tf.mu.Unlock()
 	return tf.currentLevel
 }
 
-// emit chama o handler com o evento. Deve ser chamado com o mutex já adquirido.
 func (tf *ThalamicFilter) emit(evt TelemetryEvent) {
 	tf.handler(evt)
 }
 
-// defaultLogHandler é o handler padrão — emite via log padrão do Go.
+// defaultLogHandler is the production handler — single structured line per event.
 func defaultLogHandler(evt TelemetryEvent) {
-	prefix := "HOSA [TÁLAMO]"
-	switch evt.Type {
-	case EventHeartbeat:
-		log.Printf("%s heartbeat: %s", prefix, evt.Message)
-	case EventAnomalyDetected:
-		log.Printf("%s ANOMALIA: %s", prefix, evt.Message)
-	case EventLevelChange:
-		log.Printf("%s nível alterado: %s", prefix, evt.Message)
-	case EventContainmentApplied:
-		log.Printf("%s contenção: %s", prefix, evt.Message)
-	case EventHomeostasisRestored:
-		log.Printf("%s RECUPERADO: %s", prefix, evt.Message)
-	}
+	log.Printf("HOSA %s", evt.Message)
 }

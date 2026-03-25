@@ -85,7 +85,7 @@ func (c *Collector) Start() error {
 		progInsns, ok := obj.InsnsBySection[fmt.Sprintf("tracepoint/%s/%s", p.subsystem, p.event)]
 		if !ok {
 			// Probe não encontrada no ELF — pula silenciosamente (kernel pode não ter o tracepoint)
-			log.Printf("HOSA Sensor: probe %s/%s não encontrada no ELF — pulando", p.subsystem, p.event)
+			log.Printf("HOSA [SENSOR]      probe=skipped tracepoint=%s/%s reason=not_in_elf", p.subsystem, p.event)
 			continue
 		}
 
@@ -115,7 +115,7 @@ func (c *Collector) Start() error {
 		}
 		c.eventFDs = append(c.eventFDs, eventFD)
 
-		log.Printf("HOSA Sensor: probe ativa — %s/%s", p.subsystem, p.event)
+		log.Printf("HOSA [SENSOR]      probe=active tracepoint=%s/%s", p.subsystem, p.event)
 	}
 
 	if len(c.eventFDs) == 0 {
@@ -123,7 +123,7 @@ func (c *Collector) Start() error {
 		return fmt.Errorf("sensor.Start: nenhuma probe foi anexada com sucesso")
 	}
 
-	log.Printf("HOSA Sensor: %d/%d probes ativas (mapFD=%d)", len(c.eventFDs), len(probes), c.mapFD)
+	log.Printf("HOSA [SENSOR]      probes=%d/%d map_fd=%d", len(c.eventFDs), len(probes), c.mapFD)
 	return nil
 }
 
@@ -143,7 +143,7 @@ func (c *Collector) ReadMetrics() []float64 {
 		var value uint64
 
 		if err := sysbpf.LookupElem(c.mapFD, unsafe.Pointer(&key), unsafe.Pointer(&value)); err != nil {
-			log.Printf("HOSA Sensor: erro ao ler índice %d do mapa: %v", i, err)
+			log.Printf("HOSA [ERROR] map_lookup idx=%d err=%v", i, err)
 			continue
 		}
 		result[i] = float64(value)
@@ -160,16 +160,22 @@ func (c *Collector) Close() {
 func (c *Collector) closeAll() {
 	for _, fd := range c.eventFDs {
 		if fd > 0 {
-			sysbpf.Close(fd)
+			if err := sysbpf.Close(fd); err != nil {
+				log.Printf("HOSA [ERROR] close_event_fd fd=%d err=%v", fd, err)
+			}
 		}
 	}
 	for _, fd := range c.progFDs {
 		if int(fd) > 0 {
-			unix.Close(int(fd))
+			if err := unix.Close(int(fd)); err != nil {
+				log.Printf("HOSA [ERROR] close_prog_fd fd=%d err=%v", fd, err)
+			}
 		}
 	}
 	if int(c.mapFD) > 0 {
-		unix.Close(int(c.mapFD))
+		if err := unix.Close(int(c.mapFD)); err != nil {
+			log.Printf("HOSA [ERROR] close_map_fd fd=%d err=%v", c.mapFD, err)
+		}
 	}
 	c.eventFDs = nil
 	c.progFDs = nil

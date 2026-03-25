@@ -143,6 +143,7 @@ func TestTelemetryEventType_String(t *testing.T) {
 		{EventLevelChange, "level_change"},
 		{EventContainmentApplied, "containment_applied"},
 		{EventHomeostasisRestored, "homeostasis_restored"},
+		{EventProtectionApplied, "protection_applied"},
 	}
 	for _, c := range cases {
 		if got := c.t.String(); got != c.expected {

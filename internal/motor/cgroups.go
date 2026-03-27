@@ -35,15 +35,32 @@ const (
 	fractionProtectionMax  = 0.90
 )
 
+// MotorConfig holds the containment parameters for the CgroupMotor.
+type MotorConfig struct {
+	ContainmentFraction float64
+	ProtectionHighFrac  float64
+	ProtectionMaxFrac   float64
+}
+
+// DefaultMotorConfig returns safe defaults.
+func DefaultMotorConfig() MotorConfig {
+	return MotorConfig{
+		ContainmentFraction: fractionContainment,
+		ProtectionHighFrac:  fractionProtectionHigh,
+		ProtectionMaxFrac:   fractionProtectionMax,
+	}
+}
+
 // CgroupMotor applies containment actions on a cgroup v2 path.
 type CgroupMotor struct {
 	cgPath    string
+	cfg       MotorConfig
 	lastLevel ContainmentLevel
 }
 
 // NewCgroupMotor initializes the motor for an existing cgroup.
-func NewCgroupMotor(cgPath string) *CgroupMotor {
-	return &CgroupMotor{cgPath: cgPath}
+func NewCgroupMotor(cgPath string, cfg MotorConfig) *CgroupMotor {
+	return &CgroupMotor{cgPath: cgPath, cfg: cfg}
 }
 
 // Apply executes the action for the given containment level.
@@ -68,16 +85,34 @@ func (m *CgroupMotor) Apply(level ContainmentLevel, memTotalBytes uint64) (bool,
 }
 
 // ActionSummary returns a human-readable summary of the action for the given level.
+// Uses default fractions — for config-aware summary, use motor.ActionSummaryWithConfig.
 func ActionSummary(level ContainmentLevel, memTotalBytes uint64) string {
+	return ActionSummaryWithConfig(level, memTotalBytes, DefaultMotorConfig())
+}
+
+// ActionSummaryWithConfig returns a summary using the provided config fractions.
+func ActionSummaryWithConfig(level ContainmentLevel, memTotalBytes uint64, cfg MotorConfig) string {
 	switch level {
 	case LevelHomeostasis, LevelVigilance:
 		return "limits_removed"
 	case LevelContainment:
-		high := uint64(float64(memTotalBytes) * fractionContainment)
+		frac := cfg.ContainmentFraction
+		if frac <= 0 {
+			frac = fractionContainment
+		}
+		high := uint64(float64(memTotalBytes) * frac)
 		return fmt.Sprintf("memory.high=%dMB", high/(1<<20))
 	case LevelProtection:
-		high := uint64(float64(memTotalBytes) * fractionProtectionHigh)
-		max := uint64(float64(memTotalBytes) * fractionProtectionMax)
+		highFrac := cfg.ProtectionHighFrac
+		if highFrac <= 0 {
+			highFrac = fractionProtectionHigh
+		}
+		maxFrac := cfg.ProtectionMaxFrac
+		if maxFrac <= 0 {
+			maxFrac = fractionProtectionMax
+		}
+		high := uint64(float64(memTotalBytes) * highFrac)
+		max := uint64(float64(memTotalBytes) * maxFrac)
 		return fmt.Sprintf("memory.high=%dMB memory.max=%dMB", high/(1<<20), max/(1<<20))
 	default:
 		return "unknown"
@@ -95,7 +130,11 @@ func (m *CgroupMotor) release() error {
 }
 
 func (m *CgroupMotor) contain(memTotalBytes uint64) error {
-	highLimit := uint64(float64(memTotalBytes) * fractionContainment)
+	frac := m.cfg.ContainmentFraction
+	if frac <= 0 {
+		frac = fractionContainment
+	}
+	highLimit := uint64(float64(memTotalBytes) * frac)
 	if err := syscgroup.SetMemoryHigh(m.cgPath, highLimit); err != nil {
 		return fmt.Errorf("motor.contain: %w", err)
 	}
@@ -103,8 +142,16 @@ func (m *CgroupMotor) contain(memTotalBytes uint64) error {
 }
 
 func (m *CgroupMotor) protect(memTotalBytes uint64) error {
-	highLimit := uint64(float64(memTotalBytes) * fractionProtectionHigh)
-	maxLimit := uint64(float64(memTotalBytes) * fractionProtectionMax)
+	highFrac := m.cfg.ProtectionHighFrac
+	if highFrac <= 0 {
+		highFrac = fractionProtectionHigh
+	}
+	maxFrac := m.cfg.ProtectionMaxFrac
+	if maxFrac <= 0 {
+		maxFrac = fractionProtectionMax
+	}
+	highLimit := uint64(float64(memTotalBytes) * highFrac)
+	maxLimit := uint64(float64(memTotalBytes) * maxFrac)
 	if err := syscgroup.SetMemoryHigh(m.cgPath, highLimit); err != nil {
 		return fmt.Errorf("motor.protect: %w", err)
 	}

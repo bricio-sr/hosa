@@ -1,107 +1,207 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1, user-scalable=yes" />
+    <title>Hosa Benchmarks</title>
     <style>
-      html {
-        font-family: BlinkMacSystemFont,-apple-system,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,"Fira Sans","Droid Sans","Helvetica Neue",Helvetica,Arial,sans-serif;
-        -webkit-font-smoothing: antialiased;
-        background-color: #fff;
-        font-size: 16px;
+      :root {
+        --bg-color: #f8fafc;
+        --card-bg: #ffffff;
+        --text-main: #0f172a;
+        --text-muted: #64748b;
+        --accent: #3b82f6;
+        --accent-hover: #2563eb;
+        --border-color: #e2e8f0;
+        --font-family: 'Inter', system-ui, -apple-system, sans-serif;
       }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
-        color: #4a4a4a;
-        margin: 8px;
-        font-size: 1em;
-        font-weight: 400;
+        font-family: var(--font-family);
+        -webkit-font-smoothing: antialiased;
+        background-color: var(--bg-color);
+        color: var(--text-main);
+        margin: 0;
+        padding: 0;
+        line-height: 1.5;
       }
+
+      /* Header Moderno */
       header {
-        margin-bottom: 8px;
+        background-color: var(--card-bg);
+        padding: 24px 40px;
+        border-bottom: 1px solid var(--border-color);
         display: flex;
-        flex-direction: column;
-      }
-      main {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-      }
-      a {
-        color: #3273dc;
-        cursor: pointer;
-        text-decoration: none;
-      }
-      a:hover {
-        color: #000;
-      }
-      button {
-        color: #fff;
-        background-color: #3298dc;
-        border-color: transparent;
-        cursor: pointer;
-        text-align: center;
-      }
-      button:hover {
-        background-color: #2793da;
-        flex: none;
-      }
-      .spacer {
-        flex: auto;
-      }
-      .small {
-        font-size: 0.75rem;
-      }
-      footer {
-        margin-top: 16px;
-        display: flex;
-        align-items: center;
-      }
-      .header-label {
-        margin-right: 4px;
-      }
-      .benchmark-set {
-        margin: 8px 0;
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-      }
-      .benchmark-title {
-        font-size: 3rem;
-        font-weight: 600;
-        word-break: break-word;
-        text-align: center;
-      }
-      .benchmark-graphs {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-around;
+        justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
+        gap: 16px;
+        box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+      }
+
+      .header-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      h1.page-title {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-main);
+      }
+
+      .header-item {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+      }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.2s;
+      }
+
+      a:hover {
+        color: var(--accent-hover);
+        text-decoration: underline;
+      }
+
+      /* Botão de Download */
+      button {
+        color: #fff;
+        background-color: var(--accent);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s, transform 0.1s;
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      }
+
+      button:hover {
+        background-color: var(--accent-hover);
+      }
+      
+      button:active {
+        transform: scale(0.98);
+      }
+
+      main {
+        padding: 40px;
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+
+      /* Seção de cada Tool/Pacote */
+      .benchmark-set {
+        margin-bottom: 48px;
+      }
+
+      .benchmark-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-top: 0;
+        margin-bottom: 24px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--border-color);
+        color: var(--text-main);
+      }
+
+      /* O Pulo do Gato: CSS Grid para parar de ficar comprido */
+      .benchmark-graphs {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+        gap: 24px;
         width: 100%;
       }
-      .benchmark-chart {
-        max-width: 1000px;
+
+      /* Cards dos Gráficos */
+      .chart-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+        display: flex;
+        flex-direction: column;
+        transition: box-shadow 0.2s;
+      }
+
+      .chart-card:hover {
+        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+      }
+
+      .chart-title {
+        margin: 0 0 16px 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text-main);
+        word-break: break-all;
+      }
+
+      .canvas-container {
+        position: relative;
+        height: 280px; /* Altura fixa impede que fiquem gigantes */
+        width: 100%;
+      }
+
+      footer {
+        text-align: center;
+        padding: 24px 40px;
+        border-top: 1px solid var(--border-color);
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        background-color: var(--card-bg);
+      }
+
+      @media (max-width: 768px) {
+        .benchmark-graphs {
+          grid-template-columns: 1fr;
+        }
+        main {
+          padding: 20px;
+        }
+        header {
+          padding: 16px 20px;
+          flex-direction: column;
+          align-items: flex-start;
+        }
       }
     </style>
-    <title>Benchmarks</title>
   </head>
 
   <body>
     <header id="header">
-      <div class="header-item">
-        <strong class="header-label">Last Update:</strong>
-        <span id="last-update"></span>
+      <div class="header-info">
+        <h1 class="page-title">Performance Dashboard</h1>
+        <div class="header-item">
+          <strong>Última Atualização:</strong> <span id="last-update"></span>
+        </div>
+        <div class="header-item">
+          <strong>Repositório:</strong> <a id="repository-link" rel="noopener" target="_blank"></a>
+        </div>
       </div>
-      <div class="header-item">
-        <strong class="header-label">Repository:</strong>
-        <a id="repository-link" rel="noopener"></a>
+      <div>
+        <button id="dl-button">
+          <svg style="width:16px;height:16px;vertical-align:middle;margin-right:4px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+          Exportar JSON
+        </button>
       </div>
     </header>
+
     <main id="main"></main>
+
     <footer>
-      <button id="dl-button">Download data as JSON</button>
-      <div class="spacer"></div>
-      <div class="small">Powered by <a rel="noopener" href="https://github.com/marketplace/actions/continuous-benchmark">github-action-benchmark</a></div>
+      <div>Gerado automaticamente via <a rel="noopener" target="_blank" href="https://github.com/marketplace/actions/continuous-benchmark">github-action-benchmark</a></div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.2/dist/Chart.min.js"></script>
@@ -109,7 +209,6 @@
     <script id="main-script">
       'use strict';
       (function() {
-        // Colors from https://github.com/github/linguist/blob/master/lib/linguist/languages.yml
         const toolColors = {
           cargo: '#dea584',
           go: '#00add8',
@@ -123,7 +222,7 @@
           benchmarkdotnet: '#178600',
           customBiggerIsBetter: '#38ff38',
           customSmallerIsBetter: '#ff3838',
-          _: '#333333'
+          _: '#3b82f6' // Corrigido para combinar com o tema
         };
 
         function init() {
@@ -147,21 +246,23 @@
           const data = window.BENCHMARK_DATA;
 
           // Render header
-          document.getElementById('last-update').textContent = new Date(data.lastUpdate).toString();
+          const dateObj = new Date(data.lastUpdate);
+          document.getElementById('last-update').textContent = dateObj.toLocaleString('pt-BR');
+          
           const repoLink = document.getElementById('repository-link');
           repoLink.href = data.repoUrl;
-          repoLink.textContent = data.repoUrl;
+          // Limpa a URL para ficar mais amigável na tela
+          repoLink.textContent = data.repoUrl.replace('https://github.com/', '');
 
-          // Render footer
+          // Render footer/export
           document.getElementById('dl-button').onclick = () => {
-            const dataUrl = 'data:,' + JSON.stringify(data, null, 2);
+            const dataUrl = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
             const a = document.createElement('a');
             a.href = dataUrl;
-            a.download = 'benchmark_data.json';
+            a.download = 'hosa_benchmark_data.json';
             a.click();
           };
 
-          // Prepare data points for charts
           return Object.keys(data.entries).map(name => ({
             name,
             dataSet: collectBenchesPerTestCase(data.entries[name]),
@@ -169,10 +270,8 @@
         }
 
         function renderAllChars(dataSets) {
-
           function renderGraph(parent, name, dataset) {
             const canvas = document.createElement('canvas');
-            canvas.className = 'benchmark-chart';
             parent.appendChild(canvas);
 
             const color = toolColors[dataset.length > 0 ? dataset[0].tool : '_'];
@@ -180,41 +279,46 @@
               labels: dataset.map(d => d.commit.id.slice(0, 7)),
               datasets: [
                 {
-                  label: name,
+                  label: 'Resultado',
                   data: dataset.map(d => d.bench.value),
                   borderColor: color,
-                  backgroundColor: color + '60', // Add alpha for #rrggbbaa
+                  backgroundColor: color + '20', // Opacidade reduzida pra ficar suave
+                  borderWidth: 2,
+                  pointBackgroundColor: color,
+                  pointRadius: 3,
+                  pointHoverRadius: 5,
                 }
               ],
             };
             const options = {
+              responsive: true,
+              maintainAspectRatio: false, // Fundamental para o card controlar o tamanho
+              legend: { display: false },
               scales: {
-                xAxes: [
-                  {
-                    scaleLabel: {
-                      display: true,
-                      labelString: 'commit',
-                    },
-                  }
-                ],
-                yAxes: [
-                  {
-                    scaleLabel: {
-                      display: true,
-                      labelString: dataset.length > 0 ? dataset[0].bench.unit : '',
-                    },
-                    ticks: {
-                      beginAtZero: true,
-                    }
-                  }
-                ],
+                xAxes: [{
+                  gridLines: { display: false, drawBorder: false },
+                  ticks: { fontColor: '#64748b' }
+                }],
+                yAxes: [{
+                  gridLines: { color: '#e2e8f0', drawBorder: false, zeroLineColor: '#cbd5e1' },
+                  scaleLabel: {
+                    display: true,
+                    labelString: dataset.length > 0 ? dataset[0].bench.unit : '',
+                    fontColor: '#64748b'
+                  },
+                  ticks: { beginAtZero: true, fontColor: '#64748b' }
+                }],
               },
               tooltips: {
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                titleFontFamily: 'Inter',
+                bodyFontFamily: 'Inter',
+                cornerRadius: 8,
                 callbacks: {
                   afterTitle: items => {
                     const {index} = items[0];
                     const data = dataset[index];
-                    return '\n' + data.commit.message + '\n\n' + data.commit.timestamp + ' committed by @' + data.commit.committer.username + '\n';
+                    return '\n' + data.commit.message + '\n\n' + new Date(data.commit.timestamp).toLocaleString('pt-BR') + ' por @' + data.commit.committer.username + '\n';
                   },
                   label: item => {
                     let label = item.value;
@@ -224,18 +328,11 @@
                       label += ' (' + range + ')';
                     }
                     return label;
-                  },
-                  afterLabel: item => {
-                    const { extra } = dataset[item.index].bench;
-                    return extra ? '\n' + extra : '';
                   }
                 }
               },
               onClick: (_mouseEvent, activeElems) => {
-                if (activeElems.length === 0) {
-                  return;
-                }
-                // XXX: Undocumented. How can we know the index?
+                if (activeElems.length === 0) return;
                 const index = activeElems[0]._index;
                 const url = dataset[index].commit.url;
                 window.open(url, '_blank');
@@ -254,17 +351,34 @@
             setElem.className = 'benchmark-set';
             main.appendChild(setElem);
 
-            const nameElem = document.createElement('h1');
+            // Título do grupo (ex: GoBench)
+            const nameElem = document.createElement('h2');
             nameElem.className = 'benchmark-title';
             nameElem.textContent = name;
             setElem.appendChild(nameElem);
 
+            // Container do Grid
             const graphsElem = document.createElement('div');
             graphsElem.className = 'benchmark-graphs';
             setElem.appendChild(graphsElem);
 
             for (const [benchName, benches] of benchSet.entries()) {
-              renderGraph(graphsElem, benchName, benches)
+              // Criação do Card para cada gráfico
+              const card = document.createElement('div');
+              card.className = 'chart-card';
+              
+              const cardTitle = document.createElement('h3');
+              cardTitle.className = 'chart-title';
+              cardTitle.textContent = benchName;
+              card.appendChild(cardTitle);
+
+              const canvasContainer = document.createElement('div');
+              canvasContainer.className = 'canvas-container';
+              card.appendChild(canvasContainer);
+
+              graphsElem.appendChild(card);
+              
+              renderGraph(canvasContainer, benchName, benches);
             }
           }
 
@@ -274,7 +388,7 @@
           }
         }
 
-        renderAllChars(init()); // Start
+        renderAllChars(init());
       })();
     </script>
   </body>

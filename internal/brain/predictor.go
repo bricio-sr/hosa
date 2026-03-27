@@ -38,23 +38,29 @@ const (
 // necessários para desescalar um nível. Evita flapping em bordas de limiar.
 const hysteresisDown = 5
 
-// PredictorConfig define os parâmetros do Córtex Preditivo.
+// PredictorConfig defines the parameters of the Predictive Cortex.
 type PredictorConfig struct {
-	// MinSamples é o mínimo de amostras antes de habilitar predições.
-	MinSamples int
-
-	// Alpha é o fator de suavização do EWMA (0 < α ≤ 1).
-	// Alto = mais responsivo, baixo = mais estável.
-	// Whitepaper Seção 4.3: calibrado durante warm-up por recurso.
-	// Padrão conservador para ambientes com p=4 variáveis ruidosas.
-	Alpha float64
+	MinSamples                  int
+	Alpha                       float64
+	ThresholdVigilance          float64
+	ThresholdContainment        float64
+	ThresholdProtection         float64
+	ThresholdDerivativeEscalate float64
+	ThresholdDerivativeRelax    float64
+	HysteresisDown              int
 }
 
-// DefaultConfig retorna a configuração padrão recomendada pelo whitepaper.
+// DefaultConfig returns the recommended default configuration.
 func DefaultConfig() PredictorConfig {
 	return PredictorConfig{
-		MinSamples: 30,
-		Alpha:      0.2, // suavização forte — prioriza estabilidade sobre responsividade
+		MinSamples:                  30,
+		Alpha:                       0.2,
+		ThresholdVigilance:          ThresholdVigilance,
+		ThresholdContainment:        ThresholdContainment,
+		ThresholdProtection:         ThresholdProtection,
+		ThresholdDerivativeEscalate: ThresholdDerivativeEscalate,
+		ThresholdDerivativeRelax:    ThresholdDerivativeRelax,
+		HysteresisDown:              hysteresisDown,
 	}
 }
 
@@ -219,31 +225,65 @@ func (pc *PredictiveCortex) calcDerivative(dm float64, now time.Time) float64 {
 //  2. Se dD_M/dt indica aceleração, escala um nível acima.
 //  3. Aplica histerese na descida: só desce após hysteresisDown ciclos consecutivos abaixo.
 func (pc *PredictiveCortex) classify(dm, dmDot float64) AlertLevel {
-	// Passo 1: nível pela magnitude
-	baseLevel := classifyByMagnitude(dm)
+	cfg := pc.config
 
-	// Passo 2: escalada por derivada — aceleração alta sobe um nível
+	// Resolve thresholds — use config values if set, fall back to package constants
+	thVigilance := cfg.ThresholdVigilance
+	if thVigilance <= 0 {
+		thVigilance = ThresholdVigilance
+	}
+	thContainment := cfg.ThresholdContainment
+	if thContainment <= 0 {
+		thContainment = ThresholdContainment
+	}
+	thProtection := cfg.ThresholdProtection
+	if thProtection <= 0 {
+		thProtection = ThresholdProtection
+	}
+	thDerivEscalate := cfg.ThresholdDerivativeEscalate
+	if thDerivEscalate <= 0 {
+		thDerivEscalate = ThresholdDerivativeEscalate
+	}
+	thDerivRelax := cfg.ThresholdDerivativeRelax
+	if thDerivRelax <= 0 {
+		thDerivRelax = ThresholdDerivativeRelax
+	}
+	hystDown := cfg.HysteresisDown
+	if hystDown <= 0 {
+		hystDown = hysteresisDown
+	}
+
+	// Step 1: level by magnitude
+	var baseLevel AlertLevel
+	switch {
+	case dm >= thProtection:
+		baseLevel = LevelProtection
+	case dm >= thContainment:
+		baseLevel = LevelContainment
+	case dm >= thVigilance:
+		baseLevel = LevelVigilance
+	default:
+		baseLevel = LevelHomeostasis
+	}
+
+	// Step 2: derivative escalation
 	candidateLevel := baseLevel
-	if dmDot > ThresholdDerivativeEscalate && baseLevel < LevelProtection {
+	if dmDot > thDerivEscalate && baseLevel < LevelProtection {
 		candidateLevel = baseLevel + 1
 	}
 
-	// Passo 3: histerese na descida
+	// Step 3: hysteresis on descent
 	if candidateLevel < pc.currentLevel {
-		// Sistema melhorando — só desce após N ciclos consecutivos
-		if dmDot < ThresholdDerivativeRelax {
+		if dmDot < thDerivRelax {
 			pc.belowCount++
 		} else {
-			pc.belowCount = 0 // derivada ainda alta: reseta o contador
+			pc.belowCount = 0
 		}
-
-		if pc.belowCount >= hysteresisDown {
+		if pc.belowCount >= hystDown {
 			pc.belowCount = 0
 			pc.currentLevel = candidateLevel
 		}
-		// Enquanto não atingir hysteresisDown, mantém o nível atual
 	} else {
-		// Sistema estável ou piorando — aplica imediatamente, sem atraso
 		pc.belowCount = 0
 		pc.currentLevel = candidateLevel
 	}

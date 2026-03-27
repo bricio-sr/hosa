@@ -15,8 +15,7 @@ func newTestMotor(t *testing.T) (*CgroupMotor, func()) {
 	if err != nil {
 		t.Fatalf("falha ao criar cgroup simulado: %v", err)
 	}
-	m := NewCgroupMotor(dir)
-	// Força lastLevel para um valor sentinela para que o primeiro Apply sempre execute.
+	m := NewCgroupMotor(dir, DefaultMotorConfig())
 	m.lastLevel = -1
 	return m, func() { os.RemoveAll(dir) }
 }

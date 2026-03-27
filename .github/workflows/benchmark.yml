@@ -27,7 +27,7 @@ jobs:
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          tool: gobench
+          tool: go
           output-file-path: bench_results.txt
           gh-pages-branch: gh-pages
           benchmark-data-dir-path: dev/bench

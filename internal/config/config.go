@@ -57,8 +57,6 @@ type DetectionConfig struct {
 }
 
 // AlphaPerProbeConfig allows per-probe EWMA tuning.
-// CPU benefits from higher alpha (reacts to sudden spikes).
-// Memory/IO benefits from lower alpha (smooths out gradual trends).
 type AlphaPerProbeConfig struct {
 	CPURunQueue   float64
 	MemBrkCalls   float64
@@ -68,52 +66,36 @@ type AlphaPerProbeConfig struct {
 
 // SamplingConfig controls collection frequency.
 type SamplingConfig struct {
-	// NormalIntervalMs is the collection interval in homeostasis (milliseconds).
-	NormalIntervalMs int
-
-	// VigilanceIntervalMs is the collection interval during anomaly (milliseconds).
+	NormalIntervalMs    int
 	VigilanceIntervalMs int
 }
 
 // MotorConfig controls the containment actuator.
 type MotorConfig struct {
-	// CgroupPath is the cgroup v2 directory managed by HOSA.
-	CgroupPath string
-
-	// ContainmentFraction is the memory.high limit as a fraction of total RAM (Level 2).
+	CgroupPath          string
 	ContainmentFraction float64
-
-	// ProtectionHighFrac is the memory.high limit as a fraction of total RAM (Level 3).
-	ProtectionHighFrac float64
-
-	// ProtectionMaxFrac is the memory.max limit as a fraction of total RAM (Level 3).
-	ProtectionMaxFrac float64
+	ProtectionHighFrac  float64
+	ProtectionMaxFrac   float64
 }
 
 // ThalamicConfig controls telemetry emission.
 type ThalamicConfig struct {
-	// HeartbeatIntervalS is the period between heartbeats in homeostasis (seconds).
 	HeartbeatIntervalS int
 }
 
-// HeartbeatInterval returns the heartbeat interval as a time.Duration.
 func (t ThalamicConfig) HeartbeatInterval() time.Duration {
 	return time.Duration(t.HeartbeatIntervalS) * time.Second
 }
 
-// NormalInterval returns the normal sampling interval as a time.Duration.
 func (s SamplingConfig) NormalInterval() time.Duration {
 	return time.Duration(s.NormalIntervalMs) * time.Millisecond
 }
 
-// VigilanceInterval returns the vigilance sampling interval as a time.Duration.
 func (s SamplingConfig) VigilanceInterval() time.Duration {
 	return time.Duration(s.VigilanceIntervalMs) * time.Millisecond
 }
 
 // Default returns the recommended default configuration.
-// These values are calibrated for a p=4 state vector on a typical Linux server.
-// Operators should override via /etc/hosa/hosa.toml for their specific workload.
 func Default() Config {
 	return Config{
 		Detection: DetectionConfig{
@@ -126,10 +108,10 @@ func Default() Config {
 			ThresholdDerivativeRelax:    0.5,
 			HysteresisDown:              5,
 			AlphaPerProbe: AlphaPerProbeConfig{
-				CPURunQueue:   0.3,  // CPU spikes are sudden — more responsive
-				MemBrkCalls:   0.2,  // Memory leaks are gradual — smoother
+				CPURunQueue:   0.3,
+				MemBrkCalls:   0.2,
 				MemPageFaults: 0.2,
-				IOBlockOps:    0.15, // I/O is the noisiest — most smoothing
+				IOBlockOps:    0.15,
 			},
 		},
 		Sampling: SamplingConfig{
@@ -148,14 +130,12 @@ func Default() Config {
 	}
 }
 
-// Load reads the TOML config file and returns a Config with file values
-// merged over the defaults. Missing keys keep their default values.
-// Returns default config (with a warning) if the file does not exist.
+// Load reads the TOML config file and merges values over the defaults.
+// Returns default config if the file does not exist.
 func Load(path string) (Config, error) {
 	cfg := Default()
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		// No config file is not an error — use defaults silently.
 		return cfg, nil
 	}
 
@@ -164,7 +144,6 @@ func Load(path string) (Config, error) {
 		return cfg, fmt.Errorf("config.Load: %w", err)
 	}
 
-	// Detection
 	cfg.Detection.ThresholdVigilance = t.getFloat("detection.threshold_vigilance", cfg.Detection.ThresholdVigilance)
 	cfg.Detection.ThresholdContainment = t.getFloat("detection.threshold_containment", cfg.Detection.ThresholdContainment)
 	cfg.Detection.ThresholdProtection = t.getFloat("detection.threshold_protection", cfg.Detection.ThresholdProtection)
@@ -174,56 +153,100 @@ func Load(path string) (Config, error) {
 	cfg.Detection.ThresholdDerivativeRelax = t.getFloat("detection.threshold_derivative_relax", cfg.Detection.ThresholdDerivativeRelax)
 	cfg.Detection.HysteresisDown = t.getInt("detection.hysteresis_down", cfg.Detection.HysteresisDown)
 
-	// Per-probe alpha
 	cfg.Detection.AlphaPerProbe.CPURunQueue = t.getFloat("detection.alpha_per_probe.cpu_run_queue", cfg.Detection.AlphaPerProbe.CPURunQueue)
 	cfg.Detection.AlphaPerProbe.MemBrkCalls = t.getFloat("detection.alpha_per_probe.mem_brk_calls", cfg.Detection.AlphaPerProbe.MemBrkCalls)
 	cfg.Detection.AlphaPerProbe.MemPageFaults = t.getFloat("detection.alpha_per_probe.mem_page_faults", cfg.Detection.AlphaPerProbe.MemPageFaults)
 	cfg.Detection.AlphaPerProbe.IOBlockOps = t.getFloat("detection.alpha_per_probe.io_block_ops", cfg.Detection.AlphaPerProbe.IOBlockOps)
 
-	// Sampling
 	cfg.Sampling.NormalIntervalMs = t.getInt("sampling.normal_interval_ms", cfg.Sampling.NormalIntervalMs)
 	cfg.Sampling.VigilanceIntervalMs = t.getInt("sampling.vigilance_interval_ms", cfg.Sampling.VigilanceIntervalMs)
 
-	// Motor
 	cfg.Motor.CgroupPath = t.getString("motor.cgroup_path", cfg.Motor.CgroupPath)
 	cfg.Motor.ContainmentFraction = t.getFloat("motor.containment_fraction", cfg.Motor.ContainmentFraction)
 	cfg.Motor.ProtectionHighFrac = t.getFloat("motor.protection_high_frac", cfg.Motor.ProtectionHighFrac)
 	cfg.Motor.ProtectionMaxFrac = t.getFloat("motor.protection_max_frac", cfg.Motor.ProtectionMaxFrac)
 
-	// Thalamus
 	cfg.Thalamus.HeartbeatIntervalS = t.getInt("thalamus.heartbeat_interval_s", cfg.Thalamus.HeartbeatIntervalS)
 
 	return cfg, nil
 }
 
-// ApplyCLIFlags registers CLI flags and merges them over cfg after parsing.
-// Call this after Load() — flags always win.
+// LoadWithFlags is the single entry point for configuration in main().
+// It handles the full precedence chain in one call:
 //
-// Usage:
+//  1. Start with hardcoded defaults
+//  2. Register --config flag and all tunable flags (with defaults from step 1)
+//  3. Parse CLI flags once
+//  4. If --config points to a non-default path, reload the TOML and re-apply
+//     CLI flags on top (so CLI always wins over file)
 //
-//	cfg, _ := config.Load(path)
-//	cfg = cfg.ApplyCLIFlags()
-func (cfg Config) ApplyCLIFlags() Config {
-	// Detection
-	flagFloat("threshold-vigilance", &cfg.Detection.ThresholdVigilance, "D_M threshold for Level 1 (Vigilance)")
-	flagFloat("threshold-containment", &cfg.Detection.ThresholdContainment, "D_M threshold for Level 2 (Containment)")
-	flagFloat("threshold-protection", &cfg.Detection.ThresholdProtection, "D_M threshold for Level 3 (Protection)")
-	flagFloat("alpha", &cfg.Detection.AlphaEWMA, "EWMA smoothing factor (0 < α ≤ 1)")
-	flagInt("min-samples", &cfg.Detection.MinSamples, "Warm-up samples before analysis is enabled")
-	flagInt("hysteresis", &cfg.Detection.HysteresisDown, "Cycles below threshold before descending a level")
+// Usage in main():
+//
+//	cfg, err := config.LoadWithFlags()
+func LoadWithFlags() (Config, error) {
+	defaults := Default()
 
-	// Sampling
-	flagInt("normal-interval-ms", &cfg.Sampling.NormalIntervalMs, "Sampling interval in homeostasis (ms)")
-	flagInt("vigilance-interval-ms", &cfg.Sampling.VigilanceIntervalMs, "Sampling interval during anomaly (ms)")
+	// Register --config first so it's available in flag.Parse().
+	configPath := flag.String("config", DefaultConfigPath, "path to TOML config file")
 
-	// Motor
-	flagString("cgroup-path", &cfg.Motor.CgroupPath, "cgroup v2 path managed by HOSA")
+	// Register all tunable flags with hardcoded defaults.
+	// After flag.Parse() these will hold either the default or whatever the
+	// user passed on the CLI.
+	thresholdVigilance          := flag.Float64("threshold-vigilance", defaults.Detection.ThresholdVigilance, "D_M threshold for Level 1 (Vigilance)")
+	thresholdContainment        := flag.Float64("threshold-containment", defaults.Detection.ThresholdContainment, "D_M threshold for Level 2 (Containment)")
+	thresholdProtection         := flag.Float64("threshold-protection", defaults.Detection.ThresholdProtection, "D_M threshold for Level 3 (Protection)")
+	alpha                       := flag.Float64("alpha", defaults.Detection.AlphaEWMA, "EWMA smoothing factor (0 < α ≤ 1)")
+	minSamples                  := flag.Int("min-samples", defaults.Detection.MinSamples, "Warm-up samples before analysis is enabled")
+	hysteresis                  := flag.Int("hysteresis", defaults.Detection.HysteresisDown, "Cycles below threshold before descending a level")
+	normalIntervalMs            := flag.Int("normal-interval-ms", defaults.Sampling.NormalIntervalMs, "Sampling interval in homeostasis (ms)")
+	vigilanceIntervalMs         := flag.Int("vigilance-interval-ms", defaults.Sampling.VigilanceIntervalMs, "Sampling interval during anomaly (ms)")
+	cgroupPath                  := flag.String("cgroup-path", defaults.Motor.CgroupPath, "cgroup v2 path managed by HOSA")
+	heartbeatIntervalS          := flag.Int("heartbeat-interval-s", defaults.Thalamus.HeartbeatIntervalS, "Heartbeat interval in homeostasis (s)")
 
-	// Thalamus
-	flagInt("heartbeat-interval-s", &cfg.Thalamus.HeartbeatIntervalS, "Heartbeat interval in homeostasis (s)")
-
+	// Single flag.Parse() for the entire program.
 	flag.Parse()
-	return cfg
+
+	// Load TOML (uses defaults if file doesn't exist).
+	cfg, err := Load(*configPath)
+	if err != nil {
+		return cfg, err
+	}
+
+	// Apply CLI flags on top of TOML values — but only for flags the user
+	// explicitly passed. We detect this by comparing against the hardcoded
+	// default: if a flag value differs from the hardcoded default, the user
+	// set it on the CLI and it wins.
+	//
+	// Note: this means a CLI flag that happens to equal the hardcoded default
+	// won't override a different TOML value — which is the correct behavior
+	// (you can't distinguish "user passed the default" from "not passed").
+	// For that edge case, users should edit the TOML file directly.
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "threshold-vigilance":
+			cfg.Detection.ThresholdVigilance = *thresholdVigilance
+		case "threshold-containment":
+			cfg.Detection.ThresholdContainment = *thresholdContainment
+		case "threshold-protection":
+			cfg.Detection.ThresholdProtection = *thresholdProtection
+		case "alpha":
+			cfg.Detection.AlphaEWMA = *alpha
+		case "min-samples":
+			cfg.Detection.MinSamples = *minSamples
+		case "hysteresis":
+			cfg.Detection.HysteresisDown = *hysteresis
+		case "normal-interval-ms":
+			cfg.Sampling.NormalIntervalMs = *normalIntervalMs
+		case "vigilance-interval-ms":
+			cfg.Sampling.VigilanceIntervalMs = *vigilanceIntervalMs
+		case "cgroup-path":
+			cfg.Motor.CgroupPath = *cgroupPath
+		case "heartbeat-interval-s":
+			cfg.Thalamus.HeartbeatIntervalS = *heartbeatIntervalS
+		}
+	})
+
+	return cfg, nil
 }
 
 // Validate checks that the configuration is internally consistent.

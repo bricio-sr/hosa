@@ -121,15 +121,16 @@ func GetMemoryCurrent(cgPath string) (uint64, error) {
 }
 
 // EnsureHosaCgroup garante que o cgroup /sys/fs/cgroup/hosa existe.
-// Cgroups v2 são criados simplesmente com mkdir — o kernel cria os arquivos
-// de controle automaticamente.
 func EnsureHosaCgroup() (string, error) {
-	path := filepath.Join(cgroupRoot, hosaCgroup)
+	return EnsureHosaCgroupAt(filepath.Join(cgroupRoot, hosaCgroup))
+}
 
+// EnsureHosaCgroupAt garante que o cgroup no caminho dado existe.
+// Aceita caminhos absolutos configurados pelo operador via hosa.toml.
+func EnsureHosaCgroupAt(path string) (string, error) {
 	if err := os.MkdirAll(path, 0755); err != nil {
-		return "", fmt.Errorf("EnsureHosaCgroup: falha ao criar %q: %w", path, err)
+		return "", fmt.Errorf("EnsureHosaCgroupAt: falha ao criar %q: %w", path, err)
 	}
-
 	return path, nil
 }
 

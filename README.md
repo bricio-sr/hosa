@@ -21,6 +21,7 @@
   <img src="https://img.shields.io/badge/status-alpha-orange" alt="Status: Alpha" />
   <img src="https://img.shields.io/badge/linux-%E2%89%A5%205.8-blue" alt="Linux >= 5.8" />
   <img src="https://img.shields.io/badge/lang-Go%20%2B%20eBPF%2FC-00ADD8" alt="Go + eBPF/C" />
+  <img src="https://img.shields.io/badge/phase-1%20complete-brightgreen" alt="Phase 1 Complete" />
   <img src="https://img.shields.io/github/license/bricio-sr/hosa" alt="License" />
 </p>
 
@@ -49,14 +50,14 @@ That gap — the milliseconds between the start of a collapse and the arrival of
   <td><strong>✅ With HOSA</strong></td>
   <td align="center">⚠️ Leak starts</td>
   <td align="center">🔍 Detects</td>
-  <td align="center" colspan="4" style="background:#166534;color:#bbf7d0">🛡️ Contains · memory.high throttle</td>
+  <td align="center" colspan="4">🛡️ Contains · memory.high throttle</td>
   <td align="center">✅ Stabilized</td>
   <td align="center">📋 Operator notified<br/><em>with full context</em></td>
 </tr>
 <tr>
   <td><strong>❌ Without HOSA</strong></td>
-  <td align="center" colspan="4" style="background:#7f1d1d;color:#fecaca">💀 Lethal Interval · undetected collapse</td>
-  <td align="center" colspan="2" style="background:#450a0a;color:#fca5a5">crash → 502<br/>CrashLoopBackOff</td>
+  <td align="center" colspan="4">💀 Lethal Interval · undetected collapse</td>
+  <td align="center" colspan="2">crash → 502<br/>CrashLoopBackOff</td>
   <td align="center">💥 OOM-Kill</td>
   <td align="center">🚨 Prometheus alert<br/><em>(too late)</em></td>
 </tr>
@@ -77,12 +78,6 @@ flowchart LR
     B --> C[Central server\nstores in TSDB]
     C --> D["Evaluates rules\n(cpu > 90% for 1m)"]
     D --> E[Fires alert]
-
-    style A fill:#334155,color:#e2e8f0
-    style B fill:#334155,color:#e2e8f0
-    style C fill:#334155,color:#e2e8f0
-    style D fill:#334155,color:#e2e8f0
-    style E fill:#7f1d1d,color:#fca5a5
 ```
 
 Every step adds latency. The central server makes decisions based on a **statistically stale snapshot** of the remote node. When collapse is fast — OOM kills, memory leaks, DDoS floods, fork bombs — the mitigation arrives after the damage is done.
@@ -95,7 +90,7 @@ HOSA fixes this by putting the decision-making **on the node itself**.
 
 ## How It Works
 
-HOSA is a **bio-inspired, autonomous agent** that runs on every Linux node. It works like the human reflex arc: when you touch something hot, your spinal cord retracts your hand in milliseconds — your brain is notified *after* the reflex. HOSA does the same for your servers.
+HOSA is a **bio-inspired, autonomous agent** modeled on the human nervous system — from the spinal reflex arc (Phase 1) to the sympathetic nervous system (Phase 2) to the prefrontal cortex (Phase 8).
 
 ### Detection: Mahalanobis Distance
 
@@ -103,45 +98,54 @@ Instead of static thresholds (`cpu > 90%`), HOSA learns the **normal behavioral 
 
 **Why this matters:** CPU at 85% with low I/O and stable network might be a legitimate video rendering job. CPU at 85% with rising memory pressure, I/O stalls, and network latency spikes is a collapse in progress. Static thresholds can't tell the difference. Mahalanobis can.
 
-The key insight: HOSA doesn't just look at the **magnitude** of the deviation — it tracks the **velocity** (first derivative) and **acceleration** (second derivative) of the deviation. This means it detects that you're *heading toward* collapse, not just that you've arrived.
+HOSA doesn't just look at the **magnitude** of the deviation — it tracks the **velocity** (first derivative) and **acceleration** (second derivative) of the deviation. This means it detects that you're *heading toward* collapse, not just that you've arrived.
 
-### Collection: eBPF in Kernel Space
+### Collection: eBPF in Kernel Space — Zero Third-Party Dependencies
 
 Metrics are collected via **eBPF probes** attached to kernel tracepoints — no polling, no scraping, no agents-calling-agents. Data flows from kernel space to user space through ring buffers with microsecond latency.
 
-### Actuation: cgroups v2 + XDP
+HOSA implements its own minimal eBPF loader (`internal/sysbpf`) using raw `SYS_BPF` syscalls via `golang.org/x/sys/unix` — **zero third-party eBPF libraries**. The entire stack (ELF parser, BPF map management, tracepoint attachment) is native to the repository. This eliminates the risk of dependency obsolescence, simplifies security auditing, and ensures portability to distributions without external package registry access (SCADA, air-gapped, embedded scenarios).
 
-When HOSA detects anomaly acceleration, it acts through the same kernel mechanisms your orchestrator uses — but **100x faster**:
+### Actuation: From Logic to Physics
 
+**Phase 1 — Logical Containment (cgroups v2 + XDP):**
 - **cgroups v2**: Throttle CPU/memory of offending processes (not kill — *throttle*)
 - **XDP**: Drop network packets at the driver level before they reach the stack
 
+**Phase 2 — Physical Intervention (Sympathetic Nervous System):**
+
+During a cascade failure, the CFS/EEVDF scheduler's commitment to *fairness* becomes mathematical suicide — it gives the leaking process its fair share of CPU while the database competes for the same cycles. HOSA Phase 2 overrides this:
+
+- **`sched_ext` Survival Scheduler**: Dynamically replaces CFS with a survival-policy scheduler. The offending process receives zero clock cycles (Targeted Starvation); vital processes get dedicated, cache-warm physical cores (Predictive Cache Affinity). No kernel restart required.
+- **Memory thermodynamics**: Monitors physical page fragmentation entropy ($H_{frag}$). Performs micro-dosed preemptive compaction during CPU troughs to prevent Compaction Stalls before they occur — invisible latency spikes that traditional metrics never capture.
+- **Page Table Isolation**: Forces the invasive process into slower/compressed memory zones while protecting fast contiguous RAM for healthy processes.
+
 ### Graduated Response
 
-HOSA models operational state as a **bipolar spectrum centered on homeostasis** — not just overload protection. Deviations in *both directions* from baseline are classified and acted upon. Negative regimes represent under-demand; positive regimes represent over-demand or anomaly.
+HOSA models operational state as a **bipolar spectrum centered on homeostasis** — not just overload protection. Deviations in *both directions* from baseline are classified and acted upon.
 
 <table width="100%">
 <tr>
-<td align="center" style="padding:4px 2px;font-size:12px;color:#6366f1"><b>−3</b></td>
-<td align="center" style="padding:4px 2px;font-size:12px;color:#818cf8"><b>−2</b></td>
-<td align="center" style="padding:4px 2px;font-size:12px;color:#a5b4fc"><b>−1</b></td>
-<td align="center" style="padding:4px 2px;font-size:12px;color:#c7d2fe"><b>&nbsp;&nbsp;0&nbsp;&nbsp;</b></td>
-<td align="center" style="padding:4px 2px;font-size:12px;color:#fde68a"><b>+1</b></td>
-<td align="center" style="padding:4px 2px;font-size:12px;color:#fbbf24"><b>+2</b></td>
-<td align="center" style="padding:4px 2px;font-size:12px;color:#f97316"><b>+3</b></td>
-<td align="center" style="padding:4px 2px;font-size:12px;color:#ef4444"><b>+4</b></td>
-<td align="center" style="padding:4px 2px;font-size:12px;color:#dc2626"><b>+5</b></td>
+<td align="center"><b>−3</b></td>
+<td align="center"><b>−2</b></td>
+<td align="center"><b>−1</b></td>
+<td align="center"><b>&nbsp;&nbsp;0&nbsp;&nbsp;</b></td>
+<td align="center"><b>+1</b></td>
+<td align="center"><b>+2</b></td>
+<td align="center"><b>+3</b></td>
+<td align="center"><b>+4</b></td>
+<td align="center"><b>+5</b></td>
 </tr>
 <tr>
-<td align="center" style="padding:2px;font-size:10px;color:#818cf8">Anomalous<br/>Silence</td>
-<td align="center" style="padding:2px;font-size:10px;color:#818cf8">Structural<br/>Idle</td>
-<td align="center" style="padding:2px;font-size:10px;color:#a5b4fc">Legitimate<br/>Idle</td>
-<td align="center" style="padding:2px;font-size:10px;color:#c7d2fe">Homeo-<br/>stasis</td>
-<td align="center" style="padding:2px;font-size:10px;color:#fde68a">Plateau<br/>Shift</td>
-<td align="center" style="padding:2px;font-size:10px;color:#fbbf24">Season-<br/>ality</td>
-<td align="center" style="padding:2px;font-size:10px;color:#f97316">Adver-<br/>sarial</td>
-<td align="center" style="padding:2px;font-size:10px;color:#ef4444">Local<br/>Failure</td>
-<td align="center" style="padding:2px;font-size:10px;color:#dc2626">Viral<br/>Propag.</td>
+<td align="center">Anomalous<br/>Silence</td>
+<td align="center">Structural<br/>Idle</td>
+<td align="center">Legitimate<br/>Idle</td>
+<td align="center">Homeo-<br/>stasis</td>
+<td align="center">Plateau<br/>Shift</td>
+<td align="center">Season-<br/>ality</td>
+<td align="center">Adver-<br/>sarial</td>
+<td align="center">Local<br/>Failure</td>
+<td align="center">Viral<br/>Propag.</td>
 </tr>
 </table>
 
@@ -151,7 +155,7 @@ HOSA models operational state as a **bipolar spectrum centered on homeostasis** 
 |--------|------|---------|--------|
 | **−1** | Legitimate Idleness | Activity below baseline, coherent with time window (night, weekend) | GreenOps: CPU frequency reduction, sampling interval increase, telemetry suppression |
 | **−2** | Structural Idleness | Node **permanently** oversized — no window where resources are fully used | FinOps report: calculated EPI, right-sizing suggestion, projected savings |
-| **−3** | Anomalous Silence | Abrupt traffic drop **incoherent** with temporal context — possible DNS hijack, silent failure, attack | Vigilance → Active Containment depending on speed; active checks on processes, interfaces, upstream |
+| **−3** | Anomalous Silence | Abrupt traffic drop **incoherent** with temporal context — possible DNS hijack, silent failure, attack | Vigilance → Active Containment; active checks on processes, interfaces, upstream |
 
 > **−3 is a security scenario.** Traditional monitors report "all healthy" when a server stops receiving traffic (CPU low, memory free). HOSA detects that the silence itself is the anomaly.
 
@@ -166,16 +170,16 @@ Thalamic Filter active: only a minimal heartbeat is emitted. Baseline continuous
 | **+1** | Plateau Shift | D_M elevated but **stable derivative** — new legitimate workload | Habituation: recalibrate baseline to new regime | Automatic |
 | **+2** | Seasonality | Predictable cyclic peaks (daily, weekly, monthly) | Time-window baseline profiles (digital circadian rhythm) | Automatic |
 | **+3** | Adversarial | Individual metrics within range but **covariance structure deformed** — cryptomining, slow DDoS, low-and-slow exfil | Active Containment + covariance deformation monitoring. Habituation **blocked** | Auto with hysteresis |
-| **+4** | Localized Failure | Growing D_M with sustained positive derivative — memory leak, fork bomb, disk degradation | Graduated containment: `renice` → cgroup throttle → XDP load shedding → aggressive freeze | Auto with hysteresis |
+| **+4** | Localized Failure | Growing D_M with sustained positive derivative — memory leak, fork bomb, disk degradation | Graduated containment: `renice` → cgroup throttle → XDP → Phase 2 Targeted Starvation | Auto with hysteresis |
 | **+5** | Viral Propagation | High PBI (Propagation Behavior Index) — worm, lateral movement, amplification DDoS | Network isolation. Habituation **categorically blocked** | **Manual** |
 
-Every action is **logged with its mathematical justification** — the exact D_M value, derivative, threshold crossed, and regime classification. The agent is fully auditable.
+Every action is **logged with its mathematical justification** — the exact D_M value, derivative, threshold crossed, dimensional contributions ($c_j$), and regime classification. The agent is fully auditable.
 
 ---
 
 ## Phase 1 Benchmarks
 
-> Measured on AMD EPYC 7763 · 2 vCPUs · 7.8 GB RAM · Linux (Codespaces)  
+> Measured on AMD EPYC 7763 · 2 vCPUs · 7.8 GB RAM · Linux (Codespaces)
 > Run with `make bench` — source in `internal/bench/`
 
 ### Production-Grade Overhead (5min Stress Test)
@@ -186,11 +190,7 @@ Every action is **logged with its mathematical justification** — the exact D_M
 | **Memory (RSS)** | **7.9 MB** | **8.0 MB** |
 | **Context Switches** | Near Zero | Near Zero |
 
-*Tests performed on Linux Kernel 6.x using `pidstat` and custom monitoring scripts.*
-
 ### Decision Latency
-
-The core claim of HOSA is that it acts in the interval where external monitoring cannot. These numbers validate it.
 
 | Benchmark | p50 | p99 | p999 |
 |-----------|-----|-----|------|
@@ -206,13 +206,10 @@ The core claim of HOSA is that it acts in the interval where external monitoring
 | Metric | Value |
 |--------|-------|
 | Heap allocated (after warm-up) | **108 KB** |
-| Heap in-use | 512 KB |
-| Live heap objects | 360 |
-| Allocations per full cycle | 12 allocs/op |
 | Welford update allocations | **0 allocs/op** |
 | Ring buffer insert allocations | **0 allocs/op** |
 
-The hot path (Welford + ring buffer) is zero-allocation. The 12 allocs/cycle in the full path come from matrix operations in Mahalanobis — a known optimization target for Phase 2 (`sync.Pool`).
+The hot path (Welford + ring buffer) is zero-allocation.
 
 ### Detection Rate
 
@@ -221,8 +218,6 @@ The hot path (Welford + ring buffer) is zero-allocation. The 12 allocs/cycle in 
 | Memory leak (50 units/cycle — aggressive) | **1 cycle** | ~1s |
 | CPU burn (10× spike) | 200 cycles | ~20s |
 
-The CPU burn detection delay (20s) is a direct consequence of EWMA smoothing with α=0.2. This is the **stability vs. responsiveness trade-off** documented in the whitepaper — lower α reduces false positives but increases detection latency for sudden spikes. The dissertation includes a sensitivity analysis of α across workload profiles.
-
 ### False Positive Rate
 
 | Environment | FPR |
@@ -230,16 +225,15 @@ The CPU burn detection delay (20s) is a direct consequence of EWMA smoothing wit
 | Synthetic Gaussian data (variance=8) | 18.2% |
 | Real Codespaces workload (observed) | ~5–10% (qualitative) |
 
-The 18.2% FPR on synthetic data reflects that HOSA's thresholds are calibrated for real `sched_wakeup` distributions, which are heavier-tailed than Gaussian. On real workloads (as observed in production runs), the system settles into homeostasis after the 5-minute warm-up with significantly fewer false escalations. Threshold auto-calibration based on warm-up variance is on the Phase 1 roadmap.
-
 ---
 
 ### Prerequisites
 
-- Linux kernel ≥ 5.8 (with eBPF CO-RE support)
+- Linux kernel ≥ 5.8 (eBPF CO-RE support) — for Phases 1 and 2 RAM features
+- Linux kernel ≥ 6.11 with `CONFIG_SCHED_CLASS_EXT=y` — for Phase 2 Survival Scheduler
 - Go ≥ 1.22
 - clang/llvm (for eBPF C compilation)
-- Root privileges (eBPF requires `CAP_BPF`, cgroups require `CAP_SYS_ADMIN`)
+- Root privileges (`CAP_BPF`, `CAP_SYS_ADMIN`)
 
 ---
 
@@ -249,14 +243,14 @@ The 18.2% FPR on synthetic data reflects that HOSA's thresholds are calibrated f
 graph LR
     subgraph KS["⚙️ Kernel Space (eBPF)"]
         TP["Tracepoints\nscheduler · mm · net"]
-        KP["kprobes\nPSI hooks"]
+        KP["kprobes\nPSI hooks · vmstat"]
         RB[("eBPF\nRing Buffer")]
-        XDP["Actuators\nXDP · cgroups v2"]
+        XDP["Actuators\nXDP · cgroups v2\nsched_ext · mm compaction"]
     end
 
     subgraph US["🧠 User Space (Go)"]
         subgraph PC["Predictive Cortex"]
-            SV["State Vector x(t)"]
+            SV["State Vector x(t)\n+ H_frag entropy"]
             WF["Welford\nμ · Σ update"]
             MD["Mahalanobis\nDistance D_M"]
             DV["Derivatives\n∂D_M/∂t · EWMA"]
@@ -277,24 +271,20 @@ graph LR
     SV --> WF --> MD --> DV --> TF --> RL
     RL -->|"BPF map"| XDP
     RL --> WH & LOG & MT
-
-    style KS fill:#1e293b,color:#94a3b8,stroke:#475569
-    style US fill:#0f172a,color:#cbd5e1,stroke:#334155
-    style PC fill:#172554,color:#bfdbfe,stroke:#3b82f6
-    style OC fill:#14532d,color:#bbf7d0,stroke:#22c55e
-    style XDP fill:#7f1d1d,color:#fca5a5,stroke:#ef4444
-    style RB  fill:#312e81,color:#c7d2fe,stroke:#6366f1
 ```
 
 ### Key Design Decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| **Mahalanobis over ML/DL** | O(n²) constant memory, no GPU, no training pipeline, runs on a Raspberry Pi. [Full rationale →](docs/math_model.md) |
+| **Mahalanobis over ML/DL** | O(n²) constant memory, no GPU, no training pipeline, runs on a Raspberry Pi. Interpretable output ($c_j$ decomposition). |
 | **Welford incremental updates** | O(n²) per sample with O(1) allocation. No data windows stored. Predictable memory footprint. |
 | **EWMA over raw derivatives** | Numerical differentiation is ill-posed on noisy discrete data. EWMA smooths signal before differentiation. |
+| **Zero third-party eBPF dependencies** | `internal/sysbpf` wraps `SYS_BPF` directly. Eliminates dependency obsolescence risk; full portability to air-gapped and embedded environments. Only external dependency: `golang.org/x/sys` (official Go project, indefinitely maintained). |
+| **sched_ext Survival Scheduler** | Fairness is mathematical suicide during cascade failure. `sched_ext` replaces CFS with survival policy at runtime — zero kernel restart required. |
+| **Preemptive memory defragmentation** | Compaction Stalls are invisible to all traditional metrics. $H_{frag}$ entropy monitoring + micro-dosed compaction eliminates them proactively. |
 | **Go over Rust/C** | Pragmatic: faster iteration for research phase. Hot path uses zero-allocation patterns. GC pauses are sub-ms on Go 1.22+. |
-| **Complement, not replace** | HOSA is not a monitoring system. It's the reflex arc that keeps you alive while your monitoring system thinks. |
+| **Complement, not replace monitoring** | HOSA is the reflex arc that keeps you alive while your monitoring system thinks. |
 
 ---
 
@@ -305,14 +295,13 @@ hosa/
 ├── cmd/hosa/
 │   └── main.go               # Entry point — initializes the agent
 ├── internal/
-│   ├── sysbpf/               # Custom eBPF loader (no third-party deps)
-│   │   ├── syscall.go        # BPF_MAP_CREATE, BPF_PROG_LOAD, AttachTracepoint via SYS_BPF
+│   ├── sysbpf/               # Custom eBPF loader — zero third-party deps
+│   │   ├── syscall.go        # BPF_MAP_CREATE, BPF_PROG_LOAD, attach via SYS_BPF
 │   │   └── loader.go         # ELF parser with BPF relocation resolution (R_BPF_64_64)
 │   ├── linalg/               # Linear algebra primitives
 │   │   ├── matrix.go         # Matrix operations, Gauss-Jordan inversion
-│   │   └── statistics.go     # MeanVector, CovarianceMatrix (batch — used in tests)
+│   │   └── statistics.go     # MeanVector, CovarianceMatrix
 │   ├── syscgroup/            # cgroups v2 control via direct filesystem writes
-│   │   └── file_edit.go      # memory.high, memory.max, memory.current
 │   ├── bpf/
 │   │   └── sensors.c         # 4 eBPF probes: sched_wakeup, sys_brk, page_fault, block_rq_issue
 │   ├── sensor/               # The Sensory System
@@ -328,16 +317,18 @@ hosa/
 │   │   └── signals.go        # SIGSTOP/SIGCONT for extreme containment
 │   ├── state/                # The Limbic System
 │   │   └── memory.go         # Thread-safe ring buffer — O(1) memory
+│   ├── config/               # Configuration (TOML + CLI flags, zero external parsers)
 │   └── bench/                # Phase 1 benchmark suite
 │       ├── cycle_latency_test.go   # p50/p99/p999 decision latency
 │       ├── false_positive_test.go  # FPR + fault injection detection rate
-│       ├── overhead_test.go        # Memory footprint + allocs per cycle
-│       └── helpers_test.go         # Shared fixtures
+│       └── overhead_test.go        # Memory footprint + allocs per cycle
 ├── docs/
-│   ├── architecture.md       # Deep dive into the bio-inspired architecture
-│   └── math_model.md         # Full mathematical formulation
+│   ├── whitepaper-br.md      # Academic whitepaper (Portuguese) — v2.2
+│   ├── whitepaper-en.md      # Academic whitepaper (English) — v2.2
+│   ├── architecture-br.md    # Architecture deep dive (Portuguese)
+│   └── architecture-en.md    # Architecture deep dive (English)
+├── etc/hosa/hosa.toml        # Default configuration file
 ├── go.mod
-├── go.sum
 └── Makefile                  # make build · make test · make bench
 ```
 
@@ -345,12 +336,10 @@ hosa/
 
 ## What HOSA Is Not
 
-Let's be explicit:
-
 - ❌ **Not a monitoring system.** It doesn't replace Prometheus, Datadog, or Grafana. It complements them.
-- ❌ **Not a HIDS.** It doesn't detect intrusions by signature. It detects system behavioral anomalies.
+- ❌ **Not a HIDS.** It doesn't detect intrusions by signature (model of "known bad"). It detects behavioral anomalies by deviation from a learned baseline (model of "known good").
 - ❌ **Not an orchestrator.** It doesn't schedule pods or manage clusters. It keeps individual nodes alive.
-- ❌ **Not magic.** It has a [cold start window](docs/math_model.md#cold-start), can be [evaded by sophisticated attackers](docs/math_model.md#limitations), and [throttling has side effects](docs/math_model.md#throttling-risks).
+- ❌ **Not magic.** It has a cold start window, can be evaded by sophisticated attackers, and throttling has side effects.
 
 **HOSA operates in the temporal gap where monitoring systems are structurally — not accidentally — too slow to act.**
 
@@ -358,46 +347,54 @@ Let's be explicit:
 
 ## Roadmap
 
-### Phase 1 — The Reflex Arc `← we are here`
+### Phase 1 — The Reflex Arc `✅ complete`
 
-- [x] eBPF probes for memory, CPU, I/O collection
-- [x] Welford incremental covariance matrix
-- [x] Mahalanobis Distance calculation
+- [x] eBPF probes for memory, CPU, I/O collection (custom `sysbpf` loader — zero third-party deps)
+- [x] Welford incremental covariance matrix (0 allocs/op)
+- [x] Mahalanobis Distance with dimensional contribution decomposition ($c_j$)
 - [x] Hardware proprioception (automatic topology discovery)
-- [x] EWMA smoothing + temporal derivatives
+- [x] EWMA smoothing + temporal derivatives + Time-to-Failure estimation
 - [x] Graduated response system (Levels 0–3)
 - [x] Thalamic Filter (telemetry suppression in homeostasis)
-- [x] Benchmarks: detection latency, overhead, false positive rate
+- [x] Full benchmark suite: latency p999 = 235µs, overhead = 0.02% CPU / 7.9MB RSS
 
-### Phase 2 — Ecosystem Symbiosis
+### Phase 2 — The Sympathetic Nervous System *(in design)*
 
-- [ ] Webhooks for K8s HPA/KEDA (preemptive scale-up)
+- [ ] **`sched_ext` Survival Scheduler**: Targeted Starvation + Predictive Cache Affinity (Linux ≥ 6.11)
+- [ ] **Memory thermodynamics**: $H_{frag}$ entropy monitoring + micro-dosed preemptive defragmentation + Page Table Isolation
+- [ ] Phase 2 benchmark suite: Compaction Stall frequency, L1/L2 cache hit rate during containment
+
+### Phase 3 — Ecosystem Symbiosis
+
+- [ ] Webhooks for K8s HPA/KEDA (preemptive scale-up based on $D_M$ derivative)
 - [ ] Prometheus-compatible metrics endpoint
-- [ ] Enriched `/healthz` with state vector
+- [ ] Enriched `/healthz` with normalized state vector
 - [ ] Kubernetes DaemonSet deployment
 
-### Phase 3 — Semantic Triage
+### Phase 4 — Semantic Triage
 
-- [ ] Local SLM for post-containment root cause analysis
-- [ ] Bloom Filter in eBPF for known-pattern fast-path blocking
+- [ ] Local SLM for post-containment root cause analysis (air-gapped)
+- [ ] eBPF Bloom Filter for known-pattern fast-path blocking
 - [ ] Autonomous Quarantine (Level 5) with environment-aware modes
-- [ ] Habituation: automatic baseline recalibration
 
 ### Future Research (PhD scope)
 
-- [ ] **Swarm Intelligence**: P2P consensus between HOSA instances
-- [ ] **Federated Learning**: collective immunity across fleet
-- [ ] **Hardware Offload**: SmartNIC/DPU acceleration
+- [ ] **Phase 5 — Swarm Intelligence**: P2P consensus between HOSA instances
+- [ ] **Phase 6 — Federated Learning**: collective immunity across fleet
+- [ ] **Phase 7 — Hardware Offload**: SmartNIC/DPU acceleration
+- [ ] **Phase 8 — Causal Kernel**: do-calculus over IPC DAGs in Ring 0 — the OS reasons about causal consequences before acting
 
 ---
 
 ## Academic Context
 
-HOSA originates from a Master's research project at **IMECC/Unicamp** (University of Campinas, Brazil). The theoretical foundation is documented in the [HOSA Whitepaper v2.1](docs/whitepaper.pdf).
+HOSA originates from a Master's research project at **IMECC/Unicamp** (University of Campinas, Brazil). The theoretical foundation is documented in the [HOSA Whitepaper v2.2](docs/whitepaper-en.md) (English) and [docs/whitepaper-br.md](docs/whitepaper-br.md) (Portuguese).
 
 **Core references:**
 - Mahalanobis, P. C. (1936). *On the generalized distance in statistics.*
-- Welford, B. P. (1962). *Note on a Method for Calculating Corrected Sums of Squares and Products.*
+- Welford, B. P. (1962). *Note on a method for calculating corrected sums of squares and products.*
+- Cantrill, B., Shapiro, M. W., & Leventhal, A. H. (2004). *Dynamic Instrumentation of Production Systems.* — DTrace, the intellectual ancestor of eBPF
+- Pearl, J. (2009). *Causality: Models, Reasoning, and Inference.* — theoretical foundation for Phase 8
 - Horn, P. (2001). *Autonomic Computing: IBM's Perspective on the State of Information Technology.*
 - Forrest, S., Hofmeyr, S. A., & Somayaji, A. (1997). *Computer immunology.*
 
@@ -409,14 +406,14 @@ HOSA is in **early alpha**. The architecture is solidifying but the API is not s
 
 If you want to contribute:
 
-1. Read the [whitepaper](docs/whitepaper.pdf) first — it explains *why* before *how*
+1. Read the [whitepaper](docs/whitepaper-en.md) first — it explains *why* before *how*
 2. Check [open issues](https://github.com/bricio-sr/hosa/issues) for `good-first-issue` tags
 3. Join the discussion in [Discussions](https://github.com/bricio-sr/hosa/discussions)
 
 Areas where help is especially welcome:
-- **eBPF expertise**: Optimizing probe overhead, CO-RE compatibility testing across kernel versions
+- **eBPF expertise**: Optimizing probe overhead, CO-RE compatibility across kernel versions, `sched_ext` policy design for Phase 2
 - **Statistical validation**: Testing Mahalanobis robustness under non-Gaussian workload distributions
-- **Chaos engineering**: Designing fault injection scenarios for benchmarking
+- **Chaos engineering**: Fault injection scenarios for Phase 2 (Compaction Stall injection, scheduler stress)
 
 ---
 
@@ -436,7 +433,8 @@ Areas where help is especially welcome:
 </p>
 
 <p align="center">
-  <a href="docs/whitepaper.pdf">Read the Whitepaper</a> •
+  <a href="docs/whitepaper-en.md">Read the Whitepaper (EN)</a> •
+  <a href="docs/whitepaper-br.md">Leia o Whitepaper (PT)</a> •
   <a href="https://github.com/bricio-sr/hosa/issues">Report a Bug</a> •
   <a href="https://github.com/bricio-sr/hosa/discussions">Discuss</a>
 </p>

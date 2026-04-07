@@ -1,0 +1,29 @@
+[Unit]
+Description=HOSA Agent (Homeostasis OS Agent)
+Documentation=https://github.com/bricio-sr/hosa
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/hosa
+EnvironmentFile=-/etc/default/hosa-agent
+ExecStart=/usr/local/bin/hosa_agent --config /etc/hosa/hosa.toml $HOSA_EXTRA_FLAGS
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=3s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectControlGroups=false
+ProtectSystem=false
+ProtectHome=false
+ReadWritePaths=/sys/fs/cgroup /sys/fs/bpf
+SystemCallArchitectures=native
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

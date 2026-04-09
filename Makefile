@@ -1,8 +1,16 @@
-.PHONY: generate test build bench bench-quick
+.PHONY: generate test build bench bench-quick build-bpf
 
-generate:
-	@echo ">> Compiling eBPF kernel bytecode..."
-	go generate ./internal/bpf/...
+BPF_CLANG ?= clang
+BPF_CFLAGS := -O2 -g -Wall -target bpf
+
+internal/bpf/sensors.o: internal/bpf/sensors.c
+	@echo ">> Compiling eBPF (sensors.o)..."
+	$(BPF_CLANG) $(BPF_CFLAGS) -c $< -o $@
+
+generate: internal/bpf/sensors.o
+	@echo ">> eBPF bytecode ready"
+
+build-bpf: internal/bpf/sensors.o
 
 test:
 	go test ./... -v

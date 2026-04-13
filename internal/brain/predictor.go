@@ -7,8 +7,10 @@ import (
 	"github.com/bricio-sr/hosa/internal/state"
 )
 
-// AlertLevel representa os 4 níveis de resposta do HOSA,
-// inspirados no arco reflexo do sistema nervoso humano.
+// AlertLevel representa os 5 níveis de resposta do HOSA,
+// inspirados no sistema nervoso humano:
+//   - Fase 1 (arco reflexo): Homeostase → Vigilância → Contenção → Proteção
+//   - Fase 2 (sistema nervoso simpático): Sobrevivência
 type AlertLevel int
 
 const (
@@ -16,6 +18,7 @@ const (
 	LevelVigilance
 	LevelContainment
 	LevelProtection
+	LevelSurvival // Fase 2: intervenção física — escalonador de sobrevivência + termodinâmica de memória
 )
 
 // Limiares de D_M para escalonamento de nível.
@@ -26,6 +29,7 @@ const (
 	ThresholdVigilance   = 3.5
 	ThresholdContainment = 5.5
 	ThresholdProtection  = 8.0
+	ThresholdSurvival    = 12.0 // Fase 2: cascata iminente — substituição física do escalonador
 )
 
 // Limiares de dD̄_M/dt — sobre o D_M já suavizado pelo EWMA.
@@ -45,6 +49,7 @@ type PredictorConfig struct {
 	ThresholdVigilance          float64
 	ThresholdContainment        float64
 	ThresholdProtection         float64
+	ThresholdSurvival           float64 // Fase 2: limiar para escalonador de sobrevivência
 	ThresholdDerivativeEscalate float64
 	ThresholdDerivativeRelax    float64
 	HysteresisDown              int
@@ -58,6 +63,7 @@ func DefaultConfig() PredictorConfig {
 		ThresholdVigilance:          ThresholdVigilance,
 		ThresholdContainment:        ThresholdContainment,
 		ThresholdProtection:         ThresholdProtection,
+		ThresholdSurvival:           ThresholdSurvival,
 		ThresholdDerivativeEscalate: ThresholdDerivativeEscalate,
 		ThresholdDerivativeRelax:    ThresholdDerivativeRelax,
 		HysteresisDown:              hysteresisDown,
@@ -240,6 +246,10 @@ func (pc *PredictiveCortex) classify(dm, dmDot float64) AlertLevel {
 	if thProtection <= 0 {
 		thProtection = ThresholdProtection
 	}
+	thSurvival := cfg.ThresholdSurvival
+	if thSurvival <= 0 {
+		thSurvival = ThresholdSurvival
+	}
 	thDerivEscalate := cfg.ThresholdDerivativeEscalate
 	if thDerivEscalate <= 0 {
 		thDerivEscalate = ThresholdDerivativeEscalate
@@ -256,6 +266,8 @@ func (pc *PredictiveCortex) classify(dm, dmDot float64) AlertLevel {
 	// Step 1: level by magnitude
 	var baseLevel AlertLevel
 	switch {
+	case dm >= thSurvival:
+		baseLevel = LevelSurvival
 	case dm >= thProtection:
 		baseLevel = LevelProtection
 	case dm >= thContainment:
@@ -266,9 +278,9 @@ func (pc *PredictiveCortex) classify(dm, dmDot float64) AlertLevel {
 		baseLevel = LevelHomeostasis
 	}
 
-	// Step 2: derivative escalation
+	// Step 2: derivative escalation — applies up to LevelSurvival
 	candidateLevel := baseLevel
-	if dmDot > thDerivEscalate && baseLevel < LevelProtection {
+	if dmDot > thDerivEscalate && baseLevel < LevelSurvival {
 		candidateLevel = baseLevel + 1
 	}
 
@@ -294,6 +306,8 @@ func (pc *PredictiveCortex) classify(dm, dmDot float64) AlertLevel {
 // classifyByMagnitude mapeia D_M para AlertLevel pelos limiares do whitepaper.
 func classifyByMagnitude(dm float64) AlertLevel {
 	switch {
+	case dm >= ThresholdSurvival:
+		return LevelSurvival
 	case dm >= ThresholdProtection:
 		return LevelProtection
 	case dm >= ThresholdContainment:

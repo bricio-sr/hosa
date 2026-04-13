@@ -53,6 +53,7 @@ const (
 	EventContainmentApplied
 	EventHomeostasisRestored
 	EventProtectionApplied
+	EventSurvivalEngaged // Fase 2: escalonador de sobrevivência ativado
 )
 
 func (t TelemetryEventType) String() string {
@@ -69,6 +70,8 @@ func (t TelemetryEventType) String() string {
 		return "homeostasis_restored"
 	case EventProtectionApplied:
 		return "protection_applied"
+	case EventSurvivalEngaged:
+		return "survival_engaged"
 	default:
 		return "unknown"
 	}
@@ -191,9 +194,13 @@ func (tf *ThalamicFilter) NotifyContainment(level AlertLevel, dm float64, action
 
 	tag := "[CONTAINMENT]"
 	evtType := EventContainmentApplied
-	if level == LevelProtection {
+	switch level {
+	case LevelProtection:
 		tag = "[PROTECTION] "
 		evtType = EventProtectionApplied
+	case LevelSurvival:
+		tag = "[SURVIVAL]   "
+		evtType = EventSurvivalEngaged
 	}
 
 	tf.emit(TelemetryEvent{
@@ -202,6 +209,23 @@ func (tf *ThalamicFilter) NotifyContainment(level AlertLevel, dm float64, action
 		Level:     level,
 		StressDM:  dm,
 		Message:   fmt.Sprintf("%s level=%d dm=%.4f action=%s", tag, level, dm, action),
+	})
+}
+
+// NotifySurvival is called when the Phase 2 survival scheduler is engaged or released.
+// action describes what physical intervention was applied (e.g. "sched_ext=engaged cpu.weight=1").
+func (tf *ThalamicFilter) NotifySurvival(dm, dmDot, hFrag float64, action string) {
+	tf.mu.Lock()
+	defer tf.mu.Unlock()
+
+	tf.emit(TelemetryEvent{
+		Timestamp:   time.Now(),
+		Type:        EventSurvivalEngaged,
+		Level:       LevelSurvival,
+		StressDM:    dm,
+		StressDMDot: dmDot,
+		Message: fmt.Sprintf("[SURVIVAL]   level=4 dm=%.4f dm_dot=%+.4f h_frag=%.4f action=%s",
+			dm, dmDot, hFrag, action),
 	})
 }
 

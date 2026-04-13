@@ -110,3 +110,17 @@ func (t table) getInt(key string, def int) int {
 	}
 	return n
 }
+
+// getBool returns the bool value for a key, or the default if not found or invalid.
+// Accepts "true"/"false" (case-insensitive).
+func (t table) getBool(key string, def bool) bool {
+	v, ok := t[key]
+	if !ok {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
+}

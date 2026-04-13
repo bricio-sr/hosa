@@ -38,6 +38,14 @@ type Topology struct {
 
 	// HypervisorVendor é o nome do hypervisor quando IsVM=true. Vazio em bare metal.
 	HypervisorVendor string
+
+	// CacheGroups é a lista de grupos de compartilhamento de cache L3.
+	// Cada elemento é um slice ordenado de IDs de CPUs lógicas que compartilham
+	// o mesmo domínio L3. Em sistemas single-socket: um grupo com todas as CPUs.
+	// Em sistemas dual-socket: dois grupos, um por socket.
+	// Usado pela Fase 2 para Predictive Cache Affinity (pinagem de processos vitais
+	// em CPUs com cache L3 quente).
+	CacheGroups [][]int
 }
 
 // String retorna um resumo legível da topologia — usado nos logs de inicialização.
@@ -47,11 +55,12 @@ func (t *Topology) String() string {
 		vm = fmt.Sprintf("VM (%s)", t.HypervisorVendor)
 	}
 	return fmt.Sprintf(
-		"cores=%d/%d(físico/lógico) NUMA=%d mem=%.1fGB L3=%dMB env=%s",
+		"cores=%d/%d(físico/lógico) NUMA=%d mem=%.1fGB L3=%dMB l3_groups=%d env=%s",
 		t.PhysicalCores, t.LogicalCores,
 		t.NUMANodes,
 		float64(t.MemoryTotalBytes)/(1<<30),
 		t.CacheSizeL3Bytes/(1<<20),
+		len(t.CacheGroups),
 		vm,
 	)
 }
@@ -92,6 +101,9 @@ func DiscoverTopology() (*Topology, error) {
 
 	// 6. Detecção de VM via /sys/hypervisor/ e /proc/cpuinfo
 	t.IsVM, t.HypervisorVendor = detectVM()
+
+	// 7. Grupos de cache L3 para Predictive Cache Affinity (Fase 2)
+	t.CacheGroups = buildCacheGroups()
 
 	return t, nil
 }
@@ -337,6 +349,95 @@ func detectVM() (bool, string) {
 	}
 
 	return false, ""
+}
+
+// buildCacheGroups descobre os grupos de compartilhamento de cache L3 via sysfs.
+// Lê shared_cpu_list do índice de cache nível 3 de cada CPU e agrupa as CPUs
+// que compartilham o mesmo domínio L3.
+//
+// Exemplo: sistema dual-socket com 4 CPUs por socket retorna [[0,1,2,3],[4,5,6,7]].
+func buildCacheGroups() [][]int {
+	// Mapa de "0-3" → []int{0,1,2,3} para deduplicação por canonical form
+	seen := make(map[string][]int)
+	var order []string // preserva a ordem de descoberta
+
+	entries, err := os.ReadDir("/sys/devices/system/cpu")
+	if err != nil {
+		return nil
+	}
+
+	for _, e := range entries {
+		name := e.Name()
+		if len(name) <= 3 || name[:3] != "cpu" {
+			continue
+		}
+		if _, err := strconv.Atoi(name[3:]); err != nil {
+			continue
+		}
+
+		cacheBase := filepath.Join("/sys/devices/system/cpu", name, "cache")
+		cacheEntries, err := os.ReadDir(cacheBase)
+		if err != nil {
+			continue
+		}
+
+		for _, ce := range cacheEntries {
+			if !strings.HasPrefix(ce.Name(), "index") {
+				continue
+			}
+			indexPath := filepath.Join(cacheBase, ce.Name())
+			if readIntFile(filepath.Join(indexPath, "level")) != 3 {
+				continue
+			}
+
+			raw, err := os.ReadFile(filepath.Join(indexPath, "shared_cpu_list"))
+			if err != nil {
+				continue
+			}
+			canonical := strings.TrimSpace(string(raw))
+			if _, exists := seen[canonical]; !exists {
+				cpus := parseCPUList(canonical)
+				seen[canonical] = cpus
+				order = append(order, canonical)
+			}
+			break
+		}
+	}
+
+	groups := make([][]int, 0, len(order))
+	for _, k := range order {
+		groups = append(groups, seen[k])
+	}
+	return groups
+}
+
+// parseCPUList parseia um range de CPUs no formato "0-3,5,7" e retorna
+// um slice ordenado com todos os IDs de CPU representados.
+func parseCPUList(s string) []int {
+	var cpus []int
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if strings.Contains(part, "-") {
+			bounds := strings.SplitN(part, "-", 2)
+			if len(bounds) != 2 {
+				continue
+			}
+			lo, err1 := strconv.Atoi(bounds[0])
+			hi, err2 := strconv.Atoi(bounds[1])
+			if err1 != nil || err2 != nil || hi < lo {
+				continue
+			}
+			for i := lo; i <= hi; i++ {
+				cpus = append(cpus, i)
+			}
+		} else {
+			n, err := strconv.Atoi(part)
+			if err == nil {
+				cpus = append(cpus, n)
+			}
+		}
+	}
+	return cpus
 }
 
 // readIntFile lê um inteiro de um arquivo sysfs. Retorna -1 em caso de erro.

@@ -23,6 +23,14 @@ const (
 	logEveryN          = 10
 )
 
+// phase2State encapsula os componentes da Fase 2 para passar ao react().
+type phase2State struct {
+	survivalMotor *motor.SurvivalMotor
+	fragMonitor   *sensor.FragmentationMonitor
+	lastFragState sensor.FragState
+	enabled       bool
+}
+
 func main() {
 	log.SetFlags(0)
 
@@ -93,6 +101,35 @@ func main() {
 	}
 	thalamus.Boot(fmt.Sprintf("mem_total=%.1fGB status=calibrating", float64(memTotal)/(1<<30)))
 
+	// --- Layer 5: Phase 2 — Sympathetic Nervous System ---
+	p2 := &phase2State{enabled: cfg.Survival.Enabled}
+	if cfg.Survival.Enabled {
+		survMotor, err := motor.NewSurvivalMotor(motor.SurvivalConfig{
+			SchedExtBPFObject:  cfg.Survival.SchedExtBPFObject,
+			OffenderCgroupPath: cfg.Survival.OffenderCgroupPath,
+			VitalCgroupPath:    cfg.Survival.VitalCgroupPath,
+			CpuWeightStarve:    uint32(cfg.Survival.CpuWeightStarve),
+			SwappinessOffender: cfg.Survival.SwappinessOffender,
+			SwappinessVital:    cfg.Survival.SwappinessVital,
+		}, topo)
+		if err != nil {
+			// Não fatal — Fase 2 é opcional
+			thalamus.Boot(fmt.Sprintf("phase2=init_failed err=%v", err))
+		} else {
+			p2.survivalMotor = survMotor
+			p2.fragMonitor = sensor.NewFragmentationMonitor(sensor.FragConfig{
+				Threshold:          cfg.Survival.FragEntropyThreshold,
+				CPUTroughThreshold: cfg.Survival.CompactionTroughCPUPct,
+			})
+			schedExtStatus := "unavailable"
+			if survMotor.SchedExtAvailable() {
+				schedExtStatus = "available"
+			}
+			thalamus.Boot(fmt.Sprintf("phase2=ready sched_ext=%s frag_threshold=%.2f",
+				schedExtStatus, cfg.Survival.FragEntropyThreshold))
+		}
+	}
+
 	// --- Graceful shutdown ---
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -100,12 +137,15 @@ func main() {
 	interval := normalInterval
 	var tickCount int
 
-	// --- Main Loop: The Reflex Arc ---
-	// Sense → Memorize → Analyze → Filter → React
+	// --- Main Loop: The Reflex Arc + SNS ---
+	// Sense → Memorize → Analyze → Filter → React (Phase 1 + Phase 2)
 	for {
 		select {
 		case <-ctx.Done():
 			log.Print("HOSA [SHUTDOWN] restoring homeostasis")
+			if p2.survivalMotor != nil {
+				p2.survivalMotor.Release()
+			}
 			mot.Apply(motor.LevelHomeostasis, memTotal)
 			return
 
@@ -124,16 +164,29 @@ func main() {
 				continue
 			}
 
+			// Fase 2: amostrar H_frag a cada ciclo (quando habilitado)
+			if p2.fragMonitor != nil {
+				fragState, triggered, fragErr := p2.fragMonitor.Sample(reading[0])
+				if fragErr == nil {
+					p2.lastFragState = fragState
+					if triggered {
+						log.Printf("HOSA [COMPACTION] h_frag=%.4f compactions_total=%d",
+							fragState.HFragNorm, p2.fragMonitor.CompactionCount())
+					}
+				}
+			}
+
 			thalamus.Observe(level, stress, dmDot)
 			interval = react(mot, thalamus, stress, dmDot, level, memTotal,
-				tickCount, normalInterval, vigilanceInterval)
+				tickCount, normalInterval, vigilanceInterval, p2)
 		}
 	}
 }
 
 func react(mot *motor.CgroupMotor, thalamus *brain.ThalamicFilter,
 	stress, dmDot float64, level brain.AlertLevel, memTotal uint64,
-	tick int, normalInterval, vigilanceInterval time.Duration) time.Duration {
+	tick int, normalInterval, vigilanceInterval time.Duration,
+	p2 *phase2State) time.Duration {
 
 	changed, err := mot.Apply(motor.ContainmentLevel(level), memTotal)
 	if err != nil {
@@ -141,6 +194,22 @@ func react(mot *motor.CgroupMotor, thalamus *brain.ThalamicFilter,
 	}
 	if changed && level >= brain.LevelContainment {
 		thalamus.NotifyContainment(level, stress, motor.ActionSummary(motor.ContainmentLevel(level), memTotal))
+	}
+
+	// Fase 2: engaja ou libera o SurvivalMotor conforme o nível
+	if p2.enabled && p2.survivalMotor != nil {
+		if level == brain.LevelSurvival && !p2.survivalMotor.Active() {
+			if err := p2.survivalMotor.Engage(memTotal); err != nil {
+				log.Printf("HOSA [ERROR] survival_engage err=%v", err)
+			} else {
+				thalamus.NotifySurvival(stress, dmDot, p2.lastFragState.HFragNorm,
+					p2.survivalMotor.ActionSummary())
+			}
+		} else if level < brain.LevelSurvival && p2.survivalMotor.Active() {
+			if err := p2.survivalMotor.Release(); err != nil {
+				log.Printf("HOSA [ERROR] survival_release err=%v", err)
+			}
+		}
 	}
 
 	switch level {
@@ -156,6 +225,10 @@ func react(mot *motor.CgroupMotor, thalamus *brain.ThalamicFilter,
 		return vigilanceInterval
 	case brain.LevelProtection:
 		log.Printf("HOSA [PROTECTION]  level=3 dm=%.4f dm_dot=%+.4f", stress, dmDot)
+		return vigilanceInterval
+	case brain.LevelSurvival:
+		log.Printf("HOSA [SURVIVAL]    level=4 dm=%.4f dm_dot=%+.4f h_frag=%.4f",
+			stress, dmDot, p2.lastFragState.HFragNorm)
 		return vigilanceInterval
 	default:
 		return normalInterval

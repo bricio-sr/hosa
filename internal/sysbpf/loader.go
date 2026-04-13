@@ -344,7 +344,11 @@ func rawSection(data []byte, s sectionHeader) []byte {
 }
 
 func isProgSection(name string) bool {
-	prefixes := []string{"tracepoint/", "kprobe/", "kretprobe/", "xdp", "tc/", "socket"}
+	prefixes := []string{
+		"tracepoint/", "kprobe/", "kretprobe/",
+		"xdp", "tc/", "socket",
+		"struct_ops/", "struct_ops.link/", // Fase 2: sched_ext survival scheduler
+	}
 	for _, p := range prefixes {
 		if len(name) >= len(p) && name[:len(p)] == p {
 			return true

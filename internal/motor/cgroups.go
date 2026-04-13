@@ -1,15 +1,16 @@
 // Package motor implementa o sistema de resposta graduada do HOSA —
-// o "arco reflexo" que age sobre os processos monitorados quando o
-// Córtex Preditivo detecta estresse.
+// o "arco reflexo" e o "sistema nervoso simpático" que agem sobre os processos
+// monitorados quando o Córtex Preditivo detecta estresse.
 //
-// Os 4 níveis de contenção mapeiam diretamente para os AlertLevels do brain:
+// Os 5 níveis de contenção mapeiam diretamente para os AlertLevels do brain:
 //
-//	Nível 0 (Homeostase)  → sem ação, limites removidos
-//	Nível 1 (Vigilância)  → sem ação motora, apenas monitoramento intensificado
-//	Nível 2 (Contenção)   → memory.high reduzido para throttling progressivo
-//	Nível 3 (Proteção)    → memory.max aplicado + sinal ao processo
+//	Nível 0 (Homeostase)   → sem ação, limites removidos
+//	Nível 1 (Vigilância)   → sem ação motora, apenas monitoramento intensificado
+//	Nível 2 (Contenção)    → memory.high reduzido para throttling progressivo
+//	Nível 3 (Proteção)     → memory.max aplicado + sinal ao processo
+//	Nível 4 (Sobrevivência) → Fase 2: sched_ext + termodinâmica de memória
 //
-// Referência: whitepaper HOSA, Seção 5 — Arco Reflexo e Resposta Graduada.
+// Referência: whitepaper HOSA, Seções 5 e 7 — Arco Reflexo e SNS, Fases 1 e 2.
 package motor
 
 import (
@@ -27,6 +28,7 @@ const (
 	LevelVigilance   ContainmentLevel = 1
 	LevelContainment ContainmentLevel = 2
 	LevelProtection  ContainmentLevel = 3
+	LevelSurvival    ContainmentLevel = 4 // Fase 2: intervenção física via sched_ext + memória
 )
 
 const (
@@ -79,6 +81,10 @@ func (m *CgroupMotor) Apply(level ContainmentLevel, memTotalBytes uint64) (bool,
 		return true, m.contain(memTotalBytes)
 	case LevelProtection:
 		return true, m.protect(memTotalBytes)
+	case LevelSurvival:
+		// Fase 2: aplica Proteção (Fase 1) + sinaliza ao SurvivalMotor via caller.
+		// O SurvivalMotor é gerenciado em main.go — CgroupMotor só aplica o piso de Proteção.
+		return true, m.protect(memTotalBytes)
 	default:
 		return false, fmt.Errorf("CgroupMotor.Apply: unknown level %d", level)
 	}
@@ -114,6 +120,19 @@ func ActionSummaryWithConfig(level ContainmentLevel, memTotalBytes uint64, cfg M
 		high := uint64(float64(memTotalBytes) * highFrac)
 		max := uint64(float64(memTotalBytes) * maxFrac)
 		return fmt.Sprintf("memory.high=%dMB memory.max=%dMB", high/(1<<20), max/(1<<20))
+	case LevelSurvival:
+		// Fase 2: piso de Proteção + intervenção física do SurvivalMotor
+		highFrac := cfg.ProtectionHighFrac
+		if highFrac <= 0 {
+			highFrac = fractionProtectionHigh
+		}
+		maxFrac := cfg.ProtectionMaxFrac
+		if maxFrac <= 0 {
+			maxFrac = fractionProtectionMax
+		}
+		high := uint64(float64(memTotalBytes) * highFrac)
+		max := uint64(float64(memTotalBytes) * maxFrac)
+		return fmt.Sprintf("memory.high=%dMB memory.max=%dMB sched_ext=engaging", high/(1<<20), max/(1<<20))
 	default:
 		return "unknown"
 	}

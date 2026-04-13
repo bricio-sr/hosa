@@ -20,6 +20,7 @@ type Config struct {
 	Sampling  SamplingConfig
 	Motor     MotorConfig
 	Thalamus  ThalamicConfig
+	Survival  SurvivalConfig // Phase 2: Sympathetic Nervous System
 }
 
 // DetectionConfig controls the Predictive Cortex behavior.
@@ -83,6 +84,51 @@ type ThalamicConfig struct {
 	HeartbeatIntervalS int
 }
 
+// SurvivalConfig controls Phase 2 — The Sympathetic Nervous System.
+// These parameters govern the survival scheduler and memory thermodynamics.
+type SurvivalConfig struct {
+	// Enabled activates Phase 2 physical intervention at LevelSurvival.
+	// When false, LevelSurvival falls back to LevelProtection behavior.
+	Enabled bool
+
+	// ThresholdSurvival is the D̄_M value that triggers Level 4 (Survival).
+	// Must be > ThresholdProtection. Default: 12.0.
+	ThresholdSurvival float64
+
+	// SchedExtBPFObject is the path to the compiled sched_ext eBPF object.
+	// If empty or sched_ext is unavailable, fallback to cpu.weight starvation.
+	SchedExtBPFObject string
+
+	// OffenderCgroupPath is the cgroup v2 path of the process under containment.
+	// Receives cpu.weight=CpuWeightStarve and cpuset.cpus isolation.
+	OffenderCgroupPath string
+
+	// VitalCgroupPath is the cgroup v2 path for vital/protected processes.
+	// Receives cache-warm CPU pinning and memory.swap.max=0.
+	VitalCgroupPath string
+
+	// CpuWeightStarve is the cpu.weight assigned to the offender at LevelSurvival.
+	// Range: 1–10000. Value 1 = near-starvation within cgroup hierarchy.
+	CpuWeightStarve int
+
+	// SwappinessOffender is memory.swappiness for the offender cgroup (0–200).
+	// High value forces the kernel to aggressively swap offender pages first.
+	SwappinessOffender int
+
+	// SwappinessVital is memory.swappiness for the vital cgroup (0–200).
+	// Value 0 prevents vital process pages from being swapped at all.
+	SwappinessVital int
+
+	// FragEntropyThreshold is the normalized H_frag value above which
+	// preemptive memory compaction is triggered. Range [0, 1]. Default: 0.78.
+	FragEntropyThreshold float64
+
+	// CompactionTroughCPUPct is the cpu_run_queue rate below which the system
+	// is considered "in a CPU trough" — safe to trigger compaction.
+	// Prevents compaction from adding latency during active stress.
+	CompactionTroughCPUPct float64
+}
+
 func (t ThalamicConfig) HeartbeatInterval() time.Duration {
 	return time.Duration(t.HeartbeatIntervalS) * time.Second
 }
@@ -127,6 +173,18 @@ func Default() Config {
 		Thalamus: ThalamicConfig{
 			HeartbeatIntervalS: 30,
 		},
+		Survival: SurvivalConfig{
+			Enabled:                false,
+			ThresholdSurvival:      12.0,
+			SchedExtBPFObject:      "",
+			OffenderCgroupPath:     "/sys/fs/cgroup/hosa",
+			VitalCgroupPath:        "/sys/fs/cgroup/hosa/vital",
+			CpuWeightStarve:        1,
+			SwappinessOffender:     200,
+			SwappinessVital:        0,
+			FragEntropyThreshold:   0.78,
+			CompactionTroughCPUPct: 0.10,
+		},
 	}
 }
 
@@ -168,6 +226,17 @@ func Load(path string) (Config, error) {
 
 	cfg.Thalamus.HeartbeatIntervalS = t.getInt("thalamus.heartbeat_interval_s", cfg.Thalamus.HeartbeatIntervalS)
 
+	cfg.Survival.Enabled = t.getBool("survival.enabled", cfg.Survival.Enabled)
+	cfg.Survival.ThresholdSurvival = t.getFloat("survival.threshold_survival", cfg.Survival.ThresholdSurvival)
+	cfg.Survival.SchedExtBPFObject = t.getString("survival.sched_ext_bpf_object", cfg.Survival.SchedExtBPFObject)
+	cfg.Survival.OffenderCgroupPath = t.getString("survival.offender_cgroup_path", cfg.Survival.OffenderCgroupPath)
+	cfg.Survival.VitalCgroupPath = t.getString("survival.vital_cgroup_path", cfg.Survival.VitalCgroupPath)
+	cfg.Survival.CpuWeightStarve = t.getInt("survival.cpu_weight_starve", cfg.Survival.CpuWeightStarve)
+	cfg.Survival.SwappinessOffender = t.getInt("survival.swappiness_offender", cfg.Survival.SwappinessOffender)
+	cfg.Survival.SwappinessVital = t.getInt("survival.swappiness_vital", cfg.Survival.SwappinessVital)
+	cfg.Survival.FragEntropyThreshold = t.getFloat("survival.frag_entropy_threshold", cfg.Survival.FragEntropyThreshold)
+	cfg.Survival.CompactionTroughCPUPct = t.getFloat("survival.compaction_trough_cpu_pct", cfg.Survival.CompactionTroughCPUPct)
+
 	return cfg, nil
 }
 
@@ -202,6 +271,10 @@ func LoadWithFlags() (Config, error) {
 	vigilanceIntervalMs         := flag.Int("vigilance-interval-ms", defaults.Sampling.VigilanceIntervalMs, "Sampling interval during anomaly (ms)")
 	cgroupPath                  := flag.String("cgroup-path", defaults.Motor.CgroupPath, "cgroup v2 path managed by HOSA")
 	heartbeatIntervalS          := flag.Int("heartbeat-interval-s", defaults.Thalamus.HeartbeatIntervalS, "Heartbeat interval in homeostasis (s)")
+
+	survivalEnabled   := flag.Bool("survival-enabled", defaults.Survival.Enabled, "Enable Phase 2 survival scheduler and memory thermodynamics")
+	thresholdSurvival := flag.Float64("threshold-survival", defaults.Survival.ThresholdSurvival, "D_M threshold for Level 4 (Survival)")
+	fragThreshold     := flag.Float64("frag-entropy-threshold", defaults.Survival.FragEntropyThreshold, "Normalized H_frag entropy threshold for preemptive compaction")
 
 	// Single flag.Parse() for the entire program.
 	flag.Parse()
@@ -243,6 +316,12 @@ func LoadWithFlags() (Config, error) {
 			cfg.Motor.CgroupPath = *cgroupPath
 		case "heartbeat-interval-s":
 			cfg.Thalamus.HeartbeatIntervalS = *heartbeatIntervalS
+		case "survival-enabled":
+			cfg.Survival.Enabled = *survivalEnabled
+		case "threshold-survival":
+			cfg.Survival.ThresholdSurvival = *thresholdSurvival
+		case "frag-entropy-threshold":
+			cfg.Survival.FragEntropyThreshold = *fragThreshold
 		}
 	})
 
@@ -287,6 +366,20 @@ func (cfg Config) Validate() error {
 		return fmt.Errorf("config: protection_high_frac must be < containment_fraction")
 	}
 
+	if cfg.Survival.Enabled {
+		sv := cfg.Survival
+		if sv.ThresholdSurvival <= d.ThresholdProtection {
+			return fmt.Errorf("config: survival.threshold_survival (%.2f) must be > threshold_protection (%.2f)",
+				sv.ThresholdSurvival, d.ThresholdProtection)
+		}
+		if sv.FragEntropyThreshold <= 0 || sv.FragEntropyThreshold > 1 {
+			return fmt.Errorf("config: survival.frag_entropy_threshold must be in (0, 1], got %.3f", sv.FragEntropyThreshold)
+		}
+		if sv.CpuWeightStarve < 1 || sv.CpuWeightStarve > 10000 {
+			return fmt.Errorf("config: survival.cpu_weight_starve must be in [1, 10000], got %d", sv.CpuWeightStarve)
+		}
+	}
+
 	return nil
 }
 
@@ -294,12 +387,17 @@ func (cfg Config) Validate() error {
 func (cfg Config) Summary() string {
 	d := cfg.Detection
 	s := cfg.Sampling
+	phase2 := "disabled"
+	if cfg.Survival.Enabled {
+		phase2 = fmt.Sprintf("enabled(th=%.1f h_frag=%.2f)", cfg.Survival.ThresholdSurvival, cfg.Survival.FragEntropyThreshold)
+	}
 	return fmt.Sprintf(
-		"thresholds=[%.1f/%.1f/%.1f] alpha=%.2f min_samples=%d normal=%dms vigilance=%dms heartbeat=%ds",
-		d.ThresholdVigilance, d.ThresholdContainment, d.ThresholdProtection,
+		"thresholds=[%.1f/%.1f/%.1f/%.1f] alpha=%.2f min_samples=%d normal=%dms vigilance=%dms heartbeat=%ds phase2=%s",
+		d.ThresholdVigilance, d.ThresholdContainment, d.ThresholdProtection, cfg.Survival.ThresholdSurvival,
 		d.AlphaEWMA, d.MinSamples,
 		s.NormalIntervalMs, s.VigilanceIntervalMs,
 		cfg.Thalamus.HeartbeatIntervalS,
+		phase2,
 	)
 }
 

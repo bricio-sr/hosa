@@ -1,41 +1,37 @@
-<<<<<<< HEAD
-.PHONY: generate test build bench bench-quick build-bpf
+.PHONY: generate generate-phase2 test build bench bench-quick bench-phase2 bench-phase2-quick build-bpf build-phase2
 
 BPF_CLANG ?= clang
 BPF_CFLAGS := -O2 -g -Wall -target bpf
 
+# --- Phase 1: eBPF sensor probes ---
 internal/bpf/sensors.o: internal/bpf/sensors.c
 	@echo ">> Compiling eBPF (sensors.o)..."
 	$(BPF_CLANG) $(BPF_CFLAGS) -c $< -o $@
 
-generate: internal/bpf/sensors.o
-	@echo ">> eBPF bytecode ready"
-
 build-bpf: internal/bpf/sensors.o
-=======
-.PHONY: generate generate-phase2 test build bench bench-quick bench-phase2 bench-phase2-quick
 
-# --- Phase 1: eBPF sensor probes ---
-generate:
-	@echo ">> Compiling eBPF kernel bytecode (Phase 1: sensors)..."
+generate: internal/bpf/sensors.o
+	@echo ">> Running go generate (Phase 1: sensors)..."
 	go generate ./internal/bpf/...
->>>>>>> 023836c (feat(main): Phase 2 Alpha)
+	@echo ">> eBPF bytecode ready"
 
 # --- Phase 2: sched_ext survival scheduler ---
 # Requires: Linux >= 6.11 with CONFIG_SCHED_CLASS_EXT=y
 # Requires: clang >= 16 with BPF target support
-generate-phase2:
+internal/bpf/survival_scheduler.o: internal/bpf/survival_scheduler.c
 	@echo ">> Compiling sched_ext survival scheduler (Phase 2)..."
 	@echo "   Requires: Linux >= 6.11 with CONFIG_SCHED_CLASS_EXT=y"
-	clang -target bpf -O2 -g \
+	$(BPF_CLANG) $(BPF_CFLAGS) \
 		-I/usr/include \
 		-I/usr/include/bpf \
 		-D__TARGET_ARCH_x86 \
-		-Wall -Wno-unused-value -Wno-pointer-sign \
-		-c internal/bpf/survival_scheduler.c \
-		-o internal/bpf/survival_scheduler.o
-	@echo "   Output: internal/bpf/survival_scheduler.o"
+		-Wno-unused-value -Wno-pointer-sign \
+		-c $< -o $@
+	@echo "   Output: $@"
 
+generate-phase2: internal/bpf/survival_scheduler.o
+
+# --- Core Commands ---
 test:
 	go test ./... -v
 

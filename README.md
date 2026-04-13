@@ -237,6 +237,28 @@ The hot path (Welford + ring buffer) is zero-allocation.
 
 ---
 
+## Production Deployment (systemd)
+
+HOSA runs as a root service because it needs eBPF and cgroups privileges.
+
+```bash
+# From repository root on the target host:
+sudo bash etc/deploy/install-hosa-systemd.sh
+```
+
+The installer creates:
+
+- `/etc/systemd/system/hosa-agent.service`
+- `/etc/default/hosa-agent` (for optional extra flags)
+- `/etc/hosa/hosa.toml` (if not already present)
+
+Check runtime:
+
+```bash
+systemctl status hosa-agent --no-pager
+journalctl -u hosa-agent -f
+```
+
 ## Architecture
 
 ```mermaid

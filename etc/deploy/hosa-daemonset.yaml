@@ -1,0 +1,159 @@
+---
+# HOSA DaemonSet — Phase 3: Ecosystem Symbiosis
+# Deploys one hosa_agent per node. Requires:
+#   - Linux kernel >= 6.6 (cgroups v2 + eBPF tracepoints)
+#   - CAP_BPF + CAP_SYS_ADMIN (eBPF program loading + cgroup manipulation)
+#   - Privileged mode (writes to /sys/fs/cgroup)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hosa-config
+  namespace: hosa-system
+data:
+  hosa.toml: |
+    [detection]
+    threshold_vigilance   = 3.5
+    threshold_containment = 5.5
+    threshold_protection  = 8.0
+    alpha_ewma            = 0.2
+    min_samples           = 30
+
+    [sampling]
+    normal_interval_ms    = 1000
+    vigilance_interval_ms = 100
+
+    [motor]
+    cgroup_path           = "/sys/fs/cgroup/hosa"
+    containment_fraction  = 0.75
+    protection_high_frac  = 0.50
+    protection_max_frac   = 0.90
+
+    [thalamus]
+    heartbeat_interval_s  = 30
+
+    [survival]
+    enabled               = false
+    threshold_survival    = 12.0
+    frag_entropy_threshold = 0.78
+
+    [telemetry]
+    metrics_addr           = ":9090"
+    webhook_url            = ""
+    webhook_dm_dot_threshold = 2.0
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: hosa
+  namespace: hosa-system
+  labels:
+    app: hosa
+    component: agent
+spec:
+  selector:
+    matchLabels:
+      app: hosa
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: hosa
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9090"
+        prometheus.io/path:   "/metrics"
+    spec:
+      hostPID: true
+      # hostNetwork: false — port 9090 is exposed per-pod, not on the host network.
+      # Prometheus scrapes via pod IP; adjust if your cluster requires hostNetwork.
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: hosa-agent
+          image: ghcr.io/bricio-sr/hosa:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/etc/hosa/hosa.toml
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - CAP_BPF
+                - CAP_SYS_ADMIN
+                - CAP_SYS_RESOURCE
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu:    "10m"
+              memory: "32Mi"
+            limits:
+              cpu:    "100m"
+              memory: "64Mi"
+          volumeMounts:
+            - name: hosa-config
+              mountPath: /etc/hosa
+              readOnly: true
+            - name: cgroup
+              mountPath: /sys/fs/cgroup
+            - name: proc
+              mountPath: /proc
+              readOnly: true
+      volumes:
+        - name: hosa-config
+          configMap:
+            name: hosa-config
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+            type: Directory
+        - name: proc
+          hostPath:
+            path: /proc
+            type: Directory
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hosa
+  namespace: hosa-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hosa-metrics
+  namespace: hosa-system
+  labels:
+    app: hosa
+spec:
+  selector:
+    app: hosa
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+  clusterIP: None  # headless — Prometheus scrapes individual pod IPs

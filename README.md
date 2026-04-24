@@ -259,6 +259,97 @@ systemctl status hosa-agent --no-pager
 journalctl -u hosa-agent -f
 ```
 
+## Phase 3 — Ecosystem Symbiosis
+
+HOSA Phase 3 adds an outward-facing telemetry layer so the agent can collaborate with Kubernetes autoscalers, Prometheus, and external dashboards — without requiring any new runtime dependency.
+
+### HTTP Telemetry Server (`internal/telemetry`)
+
+Enabled by default on `:9090`. Disable by setting `metrics_addr = ""` in the TOML or passing `--metrics-addr=""`.
+
+#### Prometheus endpoint — `GET /metrics`
+
+```
+# HELP hosa_dm_stress Smoothed Mahalanobis distance (D̄_M)
+# TYPE hosa_dm_stress gauge
+hosa_dm_stress 2.3400
+# HELP hosa_dm_dot Rate of change of D̄_M per second (dD̄_M/dt)
+# TYPE hosa_dm_dot gauge
+hosa_dm_dot 0.1200
+# HELP hosa_alert_level Current alert level (0=homeostasis … 4=survival)
+# TYPE hosa_alert_level gauge
+hosa_alert_level 0.0000
+# HELP hosa_h_frag_norm Normalized memory fragmentation entropy H_frag [0,1]
+# TYPE hosa_h_frag_norm gauge
+hosa_h_frag_norm 0.4500
+```
+
+#### Enriched health endpoint — `GET /healthz`
+
+```json
+{
+  "status": "homeostasis",
+  "level": 0,
+  "dm": 2.34,
+  "dm_dot": 0.12,
+  "h_frag_norm": 0.45,
+  "state_vector": [0.01, 0.02, 0.00, 0.03],
+  "timestamp": "2026-04-23T12:00:00Z"
+}
+```
+
+Status values mirror the alert levels: `homeostasis`, `vigilance`, `containment`, `protection`, `survival`.
+
+### K8s HPA/KEDA Webhooks
+
+Configure via `telemetry.webhook_url`. HOSA fires a single HTTP POST per **escalation edge** (level increase) when `dD̄_M/dt` exceeds the threshold:
+
+```json
+{
+  "event": "stress_escalating",
+  "dm": 5.2,
+  "dm_dot": 3.1,
+  "level": 2,
+  "node": "node-42",
+  "timestamp": "2026-04-23T12:00:00Z"
+}
+```
+
+Duplicate fires on the same level are suppressed — the webhook fires once per `(level, threshold)` crossing, not once per tick.
+
+### Kubernetes DaemonSet
+
+Deploy HOSA to every node in a cluster:
+
+```bash
+kubectl create namespace hosa-system
+kubectl apply -f etc/deploy/hosa-daemonset.yaml
+
+# Verify
+kubectl -n hosa-system get ds hosa
+kubectl -n hosa-system logs -l app=hosa -f
+```
+
+The DaemonSet:
+- Runs one privileged pod per node (`CAP_BPF` + `CAP_SYS_ADMIN`)
+- Mounts `/sys/fs/cgroup` and `/proc` from the host
+- Exposes `:9090` with auto-scrape annotations for Prometheus
+- Uses a liveness probe at `/healthz`
+- Applies `RollingUpdate` strategy with `maxUnavailable: 1`
+
+### Phase 3 Configuration
+
+```toml
+[telemetry]
+metrics_addr            = ":9090"           # empty string disables the server
+webhook_url             = ""                # K8s HPA/KEDA endpoint (empty = disabled)
+webhook_dm_dot_threshold = 2.0              # dD̄_M/dt above which webhook fires
+```
+
+CLI equivalents: `--metrics-addr`, `--webhook-url`.
+
+---
+
 ## Architecture
 
 ```mermaid
@@ -380,18 +471,18 @@ hosa/
 - [x] Thalamic Filter (telemetry suppression in homeostasis)
 - [x] Full benchmark suite: latency p999 = 235µs, overhead = 0.02% CPU / 7.9MB RSS
 
-### Phase 2 — The Sympathetic Nervous System *(in design)*
+### Phase 2 — The Sympathetic Nervous System `✅ complete`
 
-- [ ] **`sched_ext` Survival Scheduler**: Targeted Starvation + Predictive Cache Affinity (Linux ≥ 6.11)
-- [ ] **Memory thermodynamics**: $H_{frag}$ entropy monitoring + micro-dosed preemptive defragmentation + Page Table Isolation
-- [ ] Phase 2 benchmark suite: Compaction Stall frequency, L1/L2 cache hit rate during containment
+- [x] **`sched_ext` Survival Scheduler**: Targeted Starvation + Predictive Cache Affinity (Linux ≥ 6.11)
+- [x] **Memory thermodynamics**: $H_{frag}$ entropy monitoring + micro-dosed preemptive defragmentation + Page Table Isolation
+- [x] Phase 2 benchmark suite: Compaction Stall frequency, L1/L2 cache hit rate during containment
 
-### Phase 3 — Ecosystem Symbiosis
+### Phase 3 — Ecosystem Symbiosis `✅ complete`
 
-- [ ] Webhooks for K8s HPA/KEDA (preemptive scale-up based on $D_M$ derivative)
-- [ ] Prometheus-compatible metrics endpoint
-- [ ] Enriched `/healthz` with normalized state vector
-- [ ] Kubernetes DaemonSet deployment
+- [x] Webhooks for K8s HPA/KEDA (preemptive scale-up based on $D_M$ derivative)
+- [x] Prometheus-compatible metrics endpoint
+- [x] Enriched `/healthz` with normalized state vector
+- [x] Kubernetes DaemonSet deployment
 
 ### Phase 4 — Semantic Triage
 

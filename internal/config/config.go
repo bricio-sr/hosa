@@ -20,7 +20,8 @@ type Config struct {
 	Sampling  SamplingConfig
 	Motor     MotorConfig
 	Thalamus  ThalamicConfig
-	Survival  SurvivalConfig // Phase 2: Sympathetic Nervous System
+	Survival  SurvivalConfig  // Phase 2: Sympathetic Nervous System
+	Telemetry TelemetryConfig // Phase 3: Ecosystem Symbiosis
 }
 
 // DetectionConfig controls the Predictive Cortex behavior.
@@ -129,6 +130,22 @@ type SurvivalConfig struct {
 	CompactionTroughCPUPct float64
 }
 
+// TelemetryConfig controls Phase 3 — Ecosystem Symbiosis.
+// Enables Prometheus metrics, enriched /healthz, and K8s HPA/KEDA webhooks.
+type TelemetryConfig struct {
+	// MetricsAddr is the TCP address for the /metrics + /healthz HTTP server.
+	// Empty string disables the server entirely.
+	MetricsAddr string
+
+	// WebhookURL is the HTTP endpoint to POST on D̄_M derivative escalation.
+	// Empty string disables webhooks.
+	WebhookURL string
+
+	// WebhookDMDotThreshold is the dD̄_M/dt value above which a webhook fires.
+	// Only triggers when the alert level has also increased (escalation edge).
+	WebhookDMDotThreshold float64
+}
+
 func (t ThalamicConfig) HeartbeatInterval() time.Duration {
 	return time.Duration(t.HeartbeatIntervalS) * time.Second
 }
@@ -185,6 +202,11 @@ func Default() Config {
 			FragEntropyThreshold:   0.78,
 			CompactionTroughCPUPct: 0.10,
 		},
+		Telemetry: TelemetryConfig{
+			MetricsAddr:           ":9090",
+			WebhookURL:            "",
+			WebhookDMDotThreshold: 2.0,
+		},
 	}
 }
 
@@ -237,6 +259,10 @@ func Load(path string) (Config, error) {
 	cfg.Survival.FragEntropyThreshold = t.getFloat("survival.frag_entropy_threshold", cfg.Survival.FragEntropyThreshold)
 	cfg.Survival.CompactionTroughCPUPct = t.getFloat("survival.compaction_trough_cpu_pct", cfg.Survival.CompactionTroughCPUPct)
 
+	cfg.Telemetry.MetricsAddr = t.getString("telemetry.metrics_addr", cfg.Telemetry.MetricsAddr)
+	cfg.Telemetry.WebhookURL = t.getString("telemetry.webhook_url", cfg.Telemetry.WebhookURL)
+	cfg.Telemetry.WebhookDMDotThreshold = t.getFloat("telemetry.webhook_dm_dot_threshold", cfg.Telemetry.WebhookDMDotThreshold)
+
 	return cfg, nil
 }
 
@@ -275,6 +301,9 @@ func LoadWithFlags() (Config, error) {
 	survivalEnabled   := flag.Bool("survival-enabled", defaults.Survival.Enabled, "Enable Phase 2 survival scheduler and memory thermodynamics")
 	thresholdSurvival := flag.Float64("threshold-survival", defaults.Survival.ThresholdSurvival, "D_M threshold for Level 4 (Survival)")
 	fragThreshold     := flag.Float64("frag-entropy-threshold", defaults.Survival.FragEntropyThreshold, "Normalized H_frag entropy threshold for preemptive compaction")
+
+	metricsAddr  := flag.String("metrics-addr", defaults.Telemetry.MetricsAddr, "TCP address for Prometheus /metrics + /healthz (empty = disabled)")
+	webhookURL   := flag.String("webhook-url", defaults.Telemetry.WebhookURL, "HTTP endpoint for K8s HPA/KEDA webhook (empty = disabled)")
 
 	// Single flag.Parse() for the entire program.
 	flag.Parse()
@@ -322,6 +351,10 @@ func LoadWithFlags() (Config, error) {
 			cfg.Survival.ThresholdSurvival = *thresholdSurvival
 		case "frag-entropy-threshold":
 			cfg.Survival.FragEntropyThreshold = *fragThreshold
+		case "metrics-addr":
+			cfg.Telemetry.MetricsAddr = *metricsAddr
+		case "webhook-url":
+			cfg.Telemetry.WebhookURL = *webhookURL
 		}
 	})
 
@@ -391,13 +424,21 @@ func (cfg Config) Summary() string {
 	if cfg.Survival.Enabled {
 		phase2 = fmt.Sprintf("enabled(th=%.1f h_frag=%.2f)", cfg.Survival.ThresholdSurvival, cfg.Survival.FragEntropyThreshold)
 	}
+	metrics := cfg.Telemetry.MetricsAddr
+	if metrics == "" {
+		metrics = "disabled"
+	}
+	webhook := "disabled"
+	if cfg.Telemetry.WebhookURL != "" {
+		webhook = "enabled"
+	}
 	return fmt.Sprintf(
-		"thresholds=[%.1f/%.1f/%.1f/%.1f] alpha=%.2f min_samples=%d normal=%dms vigilance=%dms heartbeat=%ds phase2=%s",
+		"thresholds=[%.1f/%.1f/%.1f/%.1f] alpha=%.2f min_samples=%d normal=%dms vigilance=%dms heartbeat=%ds phase2=%s metrics=%s webhook=%s",
 		d.ThresholdVigilance, d.ThresholdContainment, d.ThresholdProtection, cfg.Survival.ThresholdSurvival,
 		d.AlphaEWMA, d.MinSamples,
 		s.NormalIntervalMs, s.VigilanceIntervalMs,
 		cfg.Thalamus.HeartbeatIntervalS,
-		phase2,
+		phase2, metrics, webhook,
 	)
 }
 

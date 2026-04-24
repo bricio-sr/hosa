@@ -15,6 +15,7 @@ import (
 	"github.com/bricio-sr/hosa/internal/sensor"
 	"github.com/bricio-sr/hosa/internal/state"
 	"github.com/bricio-sr/hosa/internal/syscgroup"
+	"github.com/bricio-sr/hosa/internal/telemetry"
 )
 
 const (
@@ -130,6 +131,24 @@ func main() {
 		}
 	}
 
+	// --- Layer 6: Phase 3 — Ecosystem Symbiosis ---
+	telState := &telemetry.AtomicState{}
+	var telSrv *telemetry.Server
+	if cfg.Telemetry.MetricsAddr != "" {
+		telSrv = telemetry.NewServer(cfg.Telemetry.MetricsAddr, telState)
+		if err := telSrv.Start(); err != nil {
+			thalamus.Boot(fmt.Sprintf("phase3=metrics_failed err=%v", err))
+		} else {
+			thalamus.Boot(fmt.Sprintf("phase3=ready metrics=%s", cfg.Telemetry.MetricsAddr))
+		}
+	}
+	var webhook *telemetry.WebhookClient
+	if cfg.Telemetry.WebhookURL != "" {
+		webhook = telemetry.NewWebhookClient(cfg.Telemetry.WebhookURL, cfg.Telemetry.WebhookDMDotThreshold)
+		thalamus.Boot(fmt.Sprintf("phase3=webhook_enabled url=%s threshold=%.2f",
+			cfg.Telemetry.WebhookURL, cfg.Telemetry.WebhookDMDotThreshold))
+	}
+
 	// --- Graceful shutdown ---
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -143,6 +162,11 @@ func main() {
 		select {
 		case <-ctx.Done():
 			log.Print("HOSA [SHUTDOWN] restoring homeostasis")
+			if telSrv != nil {
+				shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				_ = telSrv.Stop(shutCtx)
+				cancel()
+			}
 			if p2.survivalMotor != nil {
 				p2.survivalMotor.Release()
 			}
@@ -174,6 +198,22 @@ func main() {
 							fragState.HFragNorm, p2.fragMonitor.CompactionCount())
 					}
 				}
+			}
+
+			// Fase 3: atualiza estado compartilhado para /metrics e /healthz
+			svCopy := make([]float64, len(reading))
+			copy(svCopy, reading[:])
+			snap := telemetry.Snapshot{
+				DM:        stress,
+				DMDot:     dmDot,
+				Level:     int(level),
+				HFragNorm: p2.lastFragState.HFragNorm,
+				StateVec:  svCopy,
+				UpdatedAt: time.Now(),
+			}
+			telState.Set(snap)
+			if webhook != nil {
+				webhook.Notify(snap)
 			}
 
 			thalamus.Observe(level, stress, dmDot)

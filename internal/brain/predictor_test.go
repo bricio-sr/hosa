@@ -36,7 +36,9 @@ func TestClassifyByMagnitude(t *testing.T) {
 		{5.5, LevelContainment},
 		{7.9, LevelContainment},
 		{8.0, LevelProtection},
-		{99.0, LevelProtection},
+		{11.9, LevelProtection},
+		{12.0, LevelSurvival},
+		{99.0, LevelSurvival},
 	}
 
 	for _, c := range cases {

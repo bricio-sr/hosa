@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776083963690,
+  "lastUpdate": 1777055322817,
   "repoUrl": "https://github.com/bricio-sr/hosa",
   "entries": {
     "Benchmark": [
@@ -1530,6 +1530,636 @@ window.BENCHMARK_DATA = {
             "value": 0,
             "unit": "allocs/op",
             "extra": "24605080 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f@bricio.dev.br",
+            "name": "Fabricio Amorim",
+            "username": "bricio-sr"
+          },
+          "committer": {
+            "email": "f@bricio.dev.br",
+            "name": "Fabricio Amorim",
+            "username": "bricio-sr"
+          },
+          "distinct": true,
+          "id": "980099f29ba1a4c0ee423dabb5f8d52a4954b85c",
+          "message": "feat(main): Phase 3 Alpha",
+          "timestamp": "2026-04-24T15:26:15-03:00",
+          "tree_id": "9b08c69741b2d9d16a8c35c2a98e4e69fa3fa03a",
+          "url": "https://github.com/bricio-sr/hosa/commit/980099f29ba1a4c0ee423dabb5f8d52a4954b85c"
+        },
+        "date": 1777055321732,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkAnalyzeCycle",
+            "value": 3416,
+            "unit": "ns/op\t   10224 B/op\t       6 allocs/op",
+            "extra": "1758228 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeCycle - ns/op",
+            "value": 3416,
+            "unit": "ns/op",
+            "extra": "1758228 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeCycle - B/op",
+            "value": 10224,
+            "unit": "B/op",
+            "extra": "1758228 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeCycle - allocs/op",
+            "value": 6,
+            "unit": "allocs/op",
+            "extra": "1758228 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeLatencyDistribution",
+            "value": 0.03652,
+            "unit": "ns/op\t      2404 p50_ns\t     77105 p999_ns\t     27811 p99_ns\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeLatencyDistribution - ns/op",
+            "value": 0.03652,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeLatencyDistribution - p50_ns",
+            "value": 2404,
+            "unit": "p50_ns",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeLatencyDistribution - p999_ns",
+            "value": 77105,
+            "unit": "p999_ns",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeLatencyDistribution - p99_ns",
+            "value": 27811,
+            "unit": "p99_ns",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeLatencyDistribution - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeLatencyDistribution - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkWelfordUpdate",
+            "value": 59.23,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "99118057 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkWelfordUpdate - ns/op",
+            "value": 59.23,
+            "unit": "ns/op",
+            "extra": "99118057 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkWelfordUpdate - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "99118057 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkWelfordUpdate - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "99118057 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMahalanobisCalculation",
+            "value": 160.1,
+            "unit": "ns/op\t     136 B/op\t       4 allocs/op",
+            "extra": "37796760 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMahalanobisCalculation - ns/op",
+            "value": 160.1,
+            "unit": "ns/op",
+            "extra": "37796760 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMahalanobisCalculation - B/op",
+            "value": 136,
+            "unit": "B/op",
+            "extra": "37796760 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMahalanobisCalculation - allocs/op",
+            "value": 4,
+            "unit": "allocs/op",
+            "extra": "37796760 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFalsePositiveRate",
+            "value": 0.04375,
+            "unit": "ns/op\t      1821 false_positives\t        18.21 fpr_%\t     10000 total_cycles\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFalsePositiveRate - ns/op",
+            "value": 0.04375,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFalsePositiveRate - false_positives",
+            "value": 1821,
+            "unit": "false_positives",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFalsePositiveRate - fpr_%",
+            "value": 18.21,
+            "unit": "fpr_%",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFalsePositiveRate - total_cycles",
+            "value": 10000,
+            "unit": "total_cycles",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFalsePositiveRate - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFalsePositiveRate - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_MemoryLeak",
+            "value": 0.008261,
+            "unit": "ns/op\t         1.000 cycles_to_detect\t        50.00 leak_rate_per_cycle\t      1000 ms_to_detect\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_MemoryLeak - ns/op",
+            "value": 0.008261,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_MemoryLeak - cycles_to_detect",
+            "value": 1,
+            "unit": "cycles_to_detect",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_MemoryLeak - leak_rate_per_cycle",
+            "value": 50,
+            "unit": "leak_rate_per_cycle",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_MemoryLeak - ms_to_detect",
+            "value": 1000,
+            "unit": "ms_to_detect",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_MemoryLeak - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_MemoryLeak - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_CPUBurn",
+            "value": 0.007732,
+            "unit": "ns/op\t       200.0 cycles_after_fault\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_CPUBurn - ns/op",
+            "value": 0.007732,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_CPUBurn - cycles_after_fault",
+            "value": 200,
+            "unit": "cycles_after_fault",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_CPUBurn - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_CPUBurn - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAllocationsPerCycle",
+            "value": 4240,
+            "unit": "ns/op\t   10600 B/op\t      12 allocs/op",
+            "extra": "1412636 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAllocationsPerCycle - ns/op",
+            "value": 4240,
+            "unit": "ns/op",
+            "extra": "1412636 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAllocationsPerCycle - B/op",
+            "value": 10600,
+            "unit": "B/op",
+            "extra": "1412636 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAllocationsPerCycle - allocs/op",
+            "value": 12,
+            "unit": "allocs/op",
+            "extra": "1412636 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRingBufferInsert",
+            "value": 16.76,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "371328736 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRingBufferInsert - ns/op",
+            "value": 16.76,
+            "unit": "ns/op",
+            "extra": "371328736 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRingBufferInsert - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "371328736 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRingBufferInsert - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "371328736 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputation",
+            "value": 18097,
+            "unit": "ns/op\t    3736 B/op\t      16 allocs/op",
+            "extra": "323023 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputation - ns/op",
+            "value": 18097,
+            "unit": "ns/op",
+            "extra": "323023 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputation - B/op",
+            "value": 3736,
+            "unit": "B/op",
+            "extra": "323023 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputation - allocs/op",
+            "value": 16,
+            "unit": "allocs/op",
+            "extra": "323023 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputationLatencyDistribution",
+            "value": 0.0215,
+            "unit": "ns/op\t     19386 p50_ns\t     94547 p999_ns\t     46777 p99_ns\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputationLatencyDistribution - ns/op",
+            "value": 0.0215,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputationLatencyDistribution - p50_ns",
+            "value": 19386,
+            "unit": "p50_ns",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputationLatencyDistribution - p999_ns",
+            "value": 94547,
+            "unit": "p999_ns",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputationLatencyDistribution - p99_ns",
+            "value": 46777,
+            "unit": "p99_ns",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputationLatencyDistribution - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragComputationLatencyDistribution - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyCalculation",
+            "value": 244.4,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "24534494 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyCalculation - ns/op",
+            "value": 244.4,
+            "unit": "ns/op",
+            "extra": "24534494 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyCalculation - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "24534494 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyCalculation - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "24534494 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFragmentationMonitorSample",
+            "value": 19002,
+            "unit": "ns/op\t    3736 B/op\t      16 allocs/op",
+            "extra": "276999 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFragmentationMonitorSample - ns/op",
+            "value": 19002,
+            "unit": "ns/op",
+            "extra": "276999 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFragmentationMonitorSample - B/op",
+            "value": 3736,
+            "unit": "B/op",
+            "extra": "276999 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFragmentationMonitorSample - allocs/op",
+            "value": 16,
+            "unit": "allocs/op",
+            "extra": "276999 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCPUSetString/contiguous",
+            "value": 84.27,
+            "unit": "ns/op\t      72 B/op\t       2 allocs/op",
+            "extra": "70083524 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCPUSetString/contiguous - ns/op",
+            "value": 84.27,
+            "unit": "ns/op",
+            "extra": "70083524 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCPUSetString/contiguous - B/op",
+            "value": 72,
+            "unit": "B/op",
+            "extra": "70083524 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCPUSetString/contiguous - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "70083524 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCPUSetString/fragmented",
+            "value": 199.5,
+            "unit": "ns/op\t     120 B/op\t       4 allocs/op",
+            "extra": "30042646 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCPUSetString/fragmented - ns/op",
+            "value": 199.5,
+            "unit": "ns/op",
+            "extra": "30042646 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCPUSetString/fragmented - B/op",
+            "value": 120,
+            "unit": "B/op",
+            "extra": "30042646 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCPUSetString/fragmented - allocs/op",
+            "value": 4,
+            "unit": "allocs/op",
+            "extra": "30042646 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionCycle",
+            "value": 3429,
+            "unit": "ns/op\t   10224 B/op\t       6 allocs/op",
+            "extra": "1775947 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionCycle - ns/op",
+            "value": 3429,
+            "unit": "ns/op",
+            "extra": "1775947 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionCycle - B/op",
+            "value": 10224,
+            "unit": "B/op",
+            "extra": "1775947 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionCycle - allocs/op",
+            "value": 6,
+            "unit": "allocs/op",
+            "extra": "1775947 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionLatencyDistribution",
+            "value": 0.03596,
+            "unit": "ns/op\t      2434 p50_ns\t     81984 p999_ns\t     25638 p99_ns\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionLatencyDistribution - ns/op",
+            "value": 0.03596,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionLatencyDistribution - p50_ns",
+            "value": 2434,
+            "unit": "p50_ns",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionLatencyDistribution - p999_ns",
+            "value": 81984,
+            "unit": "p999_ns",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionLatencyDistribution - p99_ns",
+            "value": 25638,
+            "unit": "p99_ns",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionLatencyDistribution - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSurvivalDecisionLatencyDistribution - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_SurvivalCascade",
+            "value": 722533,
+            "unit": "ns/op\t         0 cycles_to_survival\t 2051794 B/op\t    1093 allocs/op",
+            "extra": "8442 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_SurvivalCascade - ns/op",
+            "value": 722533,
+            "unit": "ns/op",
+            "extra": "8442 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_SurvivalCascade - cycles_to_survival",
+            "value": 0,
+            "unit": "cycles_to_survival",
+            "extra": "8442 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_SurvivalCascade - B/op",
+            "value": 2051794,
+            "unit": "B/op",
+            "extra": "8442 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkDetectionRate_SurvivalCascade - allocs/op",
+            "value": 1093,
+            "unit": "allocs/op",
+            "extra": "8442 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/all_order0_fragmented",
+            "value": 24.48,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "244118163 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/all_order0_fragmented - ns/op",
+            "value": 24.48,
+            "unit": "ns/op",
+            "extra": "244118163 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/all_order0_fragmented - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "244118163 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/all_order0_fragmented - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "244118163 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/all_order10_consolidated",
+            "value": 24.94,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "240005547 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/all_order10_consolidated - ns/op",
+            "value": 24.94,
+            "unit": "ns/op",
+            "extra": "240005547 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/all_order10_consolidated - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "240005547 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/all_order10_consolidated - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "240005547 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/uniform_max_entropy",
+            "value": 244.1,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "24428197 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/uniform_max_entropy - ns/op",
+            "value": 244.1,
+            "unit": "ns/op",
+            "extra": "24428197 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/uniform_max_entropy - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "24428197 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHFragEntropyProfiles/uniform_max_entropy - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "24428197 times\n4 procs"
           }
         ]
       }
